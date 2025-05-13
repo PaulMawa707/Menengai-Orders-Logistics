@@ -1,0 +1,10 @@
+streamlit
+pandas
+requests
+numpy
+pdfplumber
+scikit-learn
+shapely==2.0.1
+pyproj==3.6.1
+geopandas==0.13.2
+pytz
