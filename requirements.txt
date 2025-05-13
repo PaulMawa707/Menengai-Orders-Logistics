@@ -1,0 +1,11 @@
+streamlit
+pandas
+requests
+numpy
+pdfplumber
+scikit-learn
+shapely
+geopandas
+pytz
+
+--constraint https://raw.githubusercontent.com/conda-forge/geopandas-feedstock/main/constraints.txt
