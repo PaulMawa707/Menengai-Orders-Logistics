@@ -1,0 +1,9 @@
+streamlit
+pandas
+requests
+numpy
+pdfplumber
+scikit-learn
+shapely
+geopandas==0.13.2  # known stable version
+pytz
