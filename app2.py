@@ -152,7 +152,7 @@ def run_wialon_uploader():
 
     with st.form("upload_form"):
         pdf_file = st.file_uploader("Upload PDF File", type=["pdf"])
-        selected_date = st.date_input("Select Date (Kenya Time)")
+        selected_date = st.date_input("Select Date")
         token = st.text_input("Enter your token", type="password")
         submit_btn = st.form_submit_button("Upload and Send Orders")
 

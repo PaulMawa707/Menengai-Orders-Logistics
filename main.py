@@ -32,12 +32,16 @@ def show_logo_top_right(image_path, width=120):
     logo_base64 = get_base64_image(image_path)
     st.markdown(
         f"""
-        <div style="position: absolute; top: 1rem; right: 1rem; z-index: 9999;">
-            <img src="data:image/png;base64,{logo_base64}" width="{width}">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div></div> <!-- empty left spacer -->
+            <div style="margin-right: 1rem;">
+                <img src="data:image/png;base64,{logo_base64}" width="{width}">
+            </div>
         </div>
         """,
         unsafe_allow_html=True
     )
+
 
 # ✅ Apply background and logo
 set_background()
