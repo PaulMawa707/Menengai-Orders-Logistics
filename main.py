@@ -4,7 +4,6 @@ from test2 import run_tonnage_lookup
 import base64
 
 st.set_page_config(page_title="Unified Vehicle Tool", layout="wide")
-st.title("🚚 Menengai Logistics Dashboard")
 
 # Convert image to Base64
 def get_base64_image(image_path):
@@ -28,8 +27,24 @@ def set_background():
         unsafe_allow_html=True
     )
 
-# ✅ Call the function here
+# Add logo to top-left corner
+def show_logo(image_path, width=120):
+    logo_base64 = get_base64_image(image_path)
+    st.markdown(
+        f"""
+        <div style="position: absolute; top: 1rem; right: 1rem;">
+            <img src="data:image/png;base64,{logo_base64}" width="{width}">
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+# ✅ Call background and logo
 set_background()
+show_logo("CT-Logo.jpg")  # Replace with your actual logo file
+
+# Title (appears below logo)
+st.title("🚚 Menengai Logistics Dashboard")
 
 # Sidebar navigation
 app_choice = st.sidebar.radio("Select Tool", ["📦 Logistics PDF Order Uploader", "🚛 Vehicle Tonnage Lookup"])
