@@ -45,7 +45,10 @@ def show_logo_top_right(image_path, width=120):
 
 # ✅ Apply background and logo
 set_background()
-show_logo_top_right("CT-Logo.jpg", width=120)  # Ensure this file is in your GitHub repo
+show_logo_top_right("CT-Logo.jpg", width=120)  # 
+
+st.markdown("<br>", unsafe_allow_html=True)
+
 
 # Title (appears below logo)
 st.title("🚚 Menengai Logistics Dashboard")
