@@ -1,0 +1,12 @@
+.venv
+venv
+__pycache__
+.git
+app2.py
+config.toml
+.devcontainer
+kenya-counties-simplified.geojson
+*.pyc
+.env
+.env.*
+!.env.example

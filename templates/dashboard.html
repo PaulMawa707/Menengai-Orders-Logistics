@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ title }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}" />
+</head>
+<body data-active-tab="optimized">
+  <header class="topbar">
+    <div class="topbar-brand">
+      {% if logo_exists %}
+      <img src="{{ url_for('static', filename='img/CT-Logo.jpg') }}" alt="Menengai" class="brand-logo" />
+      {% endif %}
+      <div>
+        <h1>Menengai Orders Logistics</h1>
+        <p>Route Automation · Kenya</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <span class="clock"><span id="clock-time">EAT --:--:--</span> <span class="live-dot">Live</span></span>
+      <a href="{{ url_for('logout') }}" class="btn-ghost">Sign Out</a>
+    </div>
+  </header>
+
+  <main class="main-content">
+    <section class="panel active">
+      <div class="panel-header">
+        <h2>📦 Optimized Orders Uploader</h2>
+        <p>Upload Excel orders, match assets, and dispatch nearest-first optimized routes to Wialon.</p>
+      </div>
+
+      <form id="optimized-form" class="dispatch-form" enctype="multipart/form-data">
+        <div class="form-grid">
+          <label class="field">
+            <span>Orders Excel file(s)</span>
+            <input type="file" name="orders" accept=".xls,.xlsx" multiple required />
+          </label>
+          <label class="field">
+            <span>Assets Excel</span>
+            <input type="file" name="assets" accept=".xls,.xlsx" required />
+          </label>
+          <label class="field">
+            <span>Route From</span>
+            <input type="datetime-local" name="route_from" class="route-from" required />
+          </label>
+          <label class="field">
+            <span>Route End</span>
+            <input type="datetime-local" name="route_end" class="route-end" required />
+          </label>
+          <label class="field">
+            <span>Warehouse</span>
+            <select name="warehouse" required>
+              {% for wh in warehouses %}
+              <option value="{{ wh }}" {% if wh == 'MORL' %}selected{% endif %}>{{ wh }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">Upload and Dispatch</button>
+        </div>
+        <div class="result-alert hidden"></div>
+      </form>
+    </section>
+  </main>
+
+  <footer class="footer">
+    {% if ct_logo_exists %}
+    <img src="{{ url_for('static', filename='img/CT-Logo.jpg') }}" alt="ControlTech" class="footer-logo" />
+    {% endif %}
+    <span>Powered by <a href="{{ controltech_url }}" target="_blank" rel="noopener">ControlTech</a></span>
+  </footer>
+
+  <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>

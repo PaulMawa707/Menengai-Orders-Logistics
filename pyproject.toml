@@ -1,0 +1,17 @@
+[project]
+name = "menengai-orders-logistics"
+version = "1.0.0"
+requires-python = ">=3.12"
+dependencies = [
+    "flask",
+    "python-dotenv",
+    "pandas",
+    "requests",
+    "numpy",
+    "pytz",
+    "openpyxl",
+    "gunicorn",
+]
+
+[tool.vercel]
+entrypoint = "app:app"
