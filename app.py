@@ -36,6 +36,11 @@ def allowed_file(filename):
     return Path(filename).suffix.lower() in ALLOWED_EXTENSIONS
 
 
+@app.route("/favicon.ico")
+def favicon():
+    return redirect(url_for("static", filename="img/login-hero.jpg"))
+
+
 @app.route("/")
 def index():
     if session.get("logged_in"):
