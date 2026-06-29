@@ -110,34 +110,6 @@ def read_excel_to_df(excel_file):
     return df_grouped, truck_number_norm
 
 
-def read_asset_id_from_excel(excel_file, truck_number_norm):
-    df = pd.read_excel(excel_file)
-    df.columns = [col.strip().lower() for col in df.columns]
-
-    name_col = None
-    for candidate in ("reportname", "name", "unit", "unitname"):
-        if candidate in df.columns:
-            name_col = candidate
-            break
-    if name_col is None or "itemid" not in df.columns:
-        raise ValueError(
-            "Assets Excel must contain columns like 'ReportName' (or 'Name') and 'itemId'."
-        )
-
-    df["normalized_name"] = df[name_col].astype(str).apply(normalize_plate)
-    if not truck_number_norm:
-        return None, None
-
-    match = df[df["normalized_name"] == truck_number_norm]
-    if match.empty:
-        match = df[df["normalized_name"].str.contains(re.escape(truck_number_norm), na=False)]
-
-    if not match.empty:
-        row = match.iloc[0]
-        return int(row["itemid"]), str(row[name_col])
-    return None, None
-
-
 def process_multiple_excels(excel_files):
     all_gdfs = []
     truck_numbers = set()

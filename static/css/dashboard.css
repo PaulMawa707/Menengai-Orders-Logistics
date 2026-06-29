@@ -105,6 +105,68 @@ body.has-bg > * {
 }
 @media (max-width: 640px) { .form-grid { grid-template-columns: 1fr; } }
 
+.field-full { grid-column: 1 / -1; }
+.field-hint { font-size: 0.8rem; color: var(--muted); margin-top: 0.25rem; }
+
+.asset-picker-wrap { position: relative; }
+
+.asset-picker-wrap input[type="text"] {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 0.6rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.asset-picker-wrap input[type="text"]:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 2px rgba(0, 188, 212, 0.2);
+}
+
+.asset-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem 0;
+  background: rgba(22, 27, 34, 0.98);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  z-index: 20;
+}
+
+.asset-suggestions.hidden { display: none; }
+
+.asset-suggestions li {
+  padding: 0.55rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.asset-suggestions li:hover,
+.asset-suggestions li.active {
+  background: rgba(0, 188, 212, 0.12);
+  color: var(--brand);
+}
+
+.asset-suggestions .empty {
+  color: var(--muted);
+  cursor: default;
+}
+
+.asset-suggestions .empty:hover {
+  background: transparent;
+  color: var(--muted);
+}
+
 .field { display: flex; flex-direction: column; gap: 0.35rem; }
 .field span { font-size: 0.85rem; font-weight: 500; color: var(--muted); }
 .field input, .field select {

@@ -27,7 +27,7 @@
     <section class="panel active">
       <div class="panel-header">
         <h2>📦 Optimized Orders Uploader</h2>
-        <p>Upload Excel orders, match assets, and dispatch nearest-first optimized routes to Wialon.</p>
+        <p>Upload Excel orders, select an asset, and dispatch nearest-first optimized routes to Wialon.</p>
       </div>
 
       <form id="optimized-form" class="dispatch-form" enctype="multipart/form-data">
@@ -36,9 +36,22 @@
             <span>Orders Excel file(s)</span>
             <input type="file" name="orders" accept=".xls,.xlsx" multiple required />
           </label>
-          <label class="field">
-            <span>Assets Excel</span>
-            <input type="file" name="assets" accept=".xls,.xlsx" required />
+          <label class="field field-full asset-picker">
+            <span>Asset / Truck</span>
+            <div class="asset-picker-wrap">
+              <input
+                type="text"
+                id="asset-search"
+                placeholder="Search by plate or name…"
+                autocomplete="off"
+                aria-autocomplete="list"
+                aria-controls="asset-suggestions"
+                aria-expanded="false"
+              />
+              <input type="hidden" name="asset_item_id" id="asset-item-id" required />
+              <ul id="asset-suggestions" class="asset-suggestions hidden" role="listbox"></ul>
+            </div>
+            <small id="asset-selected-label" class="field-hint hidden"></small>
           </label>
           <label class="field">
             <span>Route From</span>

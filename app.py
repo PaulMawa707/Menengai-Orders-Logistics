@@ -13,7 +13,7 @@ from flask import (
 )
 
 from config import BASE_DIR, config, verify_login
-from services import common, optimized_orders
+from services import assets, common, optimized_orders
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = config.SECRET_KEY
@@ -85,21 +85,77 @@ def dashboard():
     )
 
 
+@app.route("/api/assets")
+@login_required
+def api_assets():
+    query = request.args.get("q", "").strip()
+    limit = request.args.get("limit", "100")
+    try:
+        limit_val = max(1, min(int(limit), 500))
+    except ValueError:
+        limit_val = 100
+    try:
+        return jsonify(
+            {
+                "error": 0,
+                "assets": assets.assets_to_json(limit=limit_val, query=query),
+                "total": len(assets.load_assets_catalog()),
+            }
+        )
+    except Exception as exc:
+        return jsonify({"error": 1, "message": str(exc)}), 500
+
+
+@app.route("/api/match-asset", methods=["POST"])
+@login_required
+def api_match_asset():
+    order_files = request.files.getlist("orders")
+    if not order_files or all(not f.filename for f in order_files):
+        return jsonify({"error": 1, "message": "Upload at least one orders Excel file."}), 400
+
+    try:
+        _, truck_number_norm = optimized_orders.process_multiple_excels(order_files)
+        asset = assets.find_asset_by_truck(truck_number_norm)
+        return jsonify(
+            {
+                "error": 0,
+                "truck_number": truck_number_norm,
+                "asset": (
+                    {
+                        "item_id": asset["item_id"],
+                        "name": asset["name"],
+                    }
+                    if asset
+                    else None
+                ),
+            }
+        )
+    except Exception as exc:
+        return jsonify({"error": 1, "message": str(exc)}), 400
+
+
 @app.route("/api/optimized/dispatch", methods=["POST"])
 @login_required
 def api_optimized_dispatch():
     order_files = request.files.getlist("orders")
-    assets_file = request.files.get("assets")
-    if not order_files or not assets_file or assets_file.filename == "":
-        return jsonify(
-            {"error": 1, "message": "Please upload orders Excel and assets Excel."}
-        ), 400
+    asset_item_id = request.form.get("asset_item_id", "").strip()
+    if not order_files or any(not f.filename for f in order_files):
+        return jsonify({"error": 1, "message": "Please upload orders Excel file(s)."}), 400
+    if not asset_item_id:
+        return jsonify({"error": 1, "message": "Please select an asset."}), 400
 
     for f in order_files:
-        if not f.filename or not allowed_file(f.filename):
+        if not allowed_file(f.filename):
             return jsonify({"error": 1, "message": "Invalid orders file type."}), 400
-    if not allowed_file(assets_file.filename):
-        return jsonify({"error": 1, "message": "Invalid assets file type."}), 400
+
+    try:
+        unit_id = int(asset_item_id)
+    except ValueError:
+        return jsonify({"error": 1, "message": "Invalid asset selection."}), 400
+
+    asset = assets.get_asset_by_item_id(unit_id)
+    if not asset:
+        return jsonify({"error": 1, "message": "Selected asset was not found."}), 400
 
     warehouse_choice = request.form.get("warehouse", "MORL")
     if warehouse_choice not in common.WAREHOUSES:
@@ -125,25 +181,23 @@ def api_optimized_dispatch():
                 }
             ), 400
 
-        unit_id, vehicle_name = optimized_orders.read_asset_id_from_excel(
-            assets_file, truck_number_norm
-        )
-        if not unit_id:
-            return jsonify(
-                {
-                    "error": 1,
-                    "message": (
-                        f"Could not find unit ID for truck (normalized): "
-                        f"{truck_number_norm or 'UNKNOWN'}."
-                    ),
-                }
-            ), 400
+        if truck_number_norm and asset["normalized_name"] != truck_number_norm:
+            if truck_number_norm not in asset["normalized_name"]:
+                return jsonify(
+                    {
+                        "error": 1,
+                        "message": (
+                            f"Selected asset '{asset['name']}' does not match truck "
+                            f"in orders ({truck_number_norm})."
+                        ),
+                    }
+                ), 400
 
         result = optimized_orders.send_orders_and_create_route(
             config.WIALON_TOKEN,
             config.WIALON_RESOURCE_ID,
-            unit_id,
-            vehicle_name,
+            asset["item_id"],
+            asset["name"],
             gdf_joined,
             tf,
             tt,
