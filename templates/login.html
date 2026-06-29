@@ -35,8 +35,8 @@
 <body class="login-root bg-slate-950 text-slate-100">
   <div class="grid min-h-dvh lg:grid-cols-2">
     <div class="relative hidden lg:flex flex-col justify-end p-12 overflow-hidden">
-      {% if bg_exists %}
-      <img src="{{ url_for('static', filename='img/bg.jpg') }}" alt="" class="absolute inset-0 h-full w-full object-cover" />
+      {% if hero_exists %}
+      <img src="{{ url_for('static', filename='img/login-hero.jpg') }}" alt="" class="absolute inset-0 h-full w-full object-cover" />
       {% else %}
       <div class="absolute inset-0 bg-gradient-to-br from-brand-900 via-slate-900 to-slate-950"></div>
       {% endif %}
@@ -47,7 +47,7 @@
           Menengai <span class="hero-accent">Orders Logistics</span>
         </h1>
         <p class="hero-body text-lg">
-          Upload Excel orders, match assets, and dispatch nearest-first optimized routes to Wialon Logistics.
+          Upload Excel orders, match assets, and dispatch nearest-first optimized routes to Track3 Logistics.
         </p>
       </div>
     </div>

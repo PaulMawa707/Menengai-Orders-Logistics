@@ -20,6 +20,25 @@ body {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  position: relative;
+}
+
+body.has-bg {
+  background: var(--bg) url("../img/bg.jpg") center center / cover no-repeat fixed;
+}
+
+body.has-bg::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: rgba(14, 17, 23, 0.72);
+  pointer-events: none;
+  z-index: 0;
+}
+
+body.has-bg > * {
+  position: relative;
+  z-index: 1;
 }
 
 .topbar {
@@ -28,7 +47,8 @@ body {
   justify-content: space-between;
   padding: 1rem 1.5rem;
   border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  background: rgba(22, 27, 34, 0.92);
+  backdrop-filter: blur(8px);
 }
 
 .topbar-brand { display: flex; align-items: center; gap: 0.75rem; }
@@ -70,7 +90,13 @@ body {
 .panel-header h2 { font-size: 1.25rem; margin-bottom: 0.35rem; }
 .panel-header p { color: var(--muted); font-size: 0.9rem; }
 
-.dispatch-form { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 1.5rem; }
+.dispatch-form {
+  background: rgba(22, 27, 34, 0.92);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  backdrop-filter: blur(8px);
+}
 
 .form-grid {
   display: grid;
@@ -117,6 +143,8 @@ body {
   gap: 0.5rem;
   padding: 1rem;
   border-top: 1px solid var(--border);
+  background: rgba(22, 27, 34, 0.88);
+  backdrop-filter: blur(8px);
   font-size: 0.8rem;
   color: var(--muted);
 }

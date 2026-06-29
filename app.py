@@ -59,7 +59,7 @@ def login():
     return render_template(
         "login.html",
         error=error,
-        bg_exists=(BASE_DIR / "static" / "img" / "bg.jpg").exists(),
+        hero_exists=(BASE_DIR / "static" / "img" / "login-hero.jpg").exists(),
         logo_exists=(BASE_DIR / "static" / "img" / "CT-Logo.jpg").exists(),
         ct_logo_exists=(BASE_DIR / "static" / "img" / "CT-Logo.jpg").exists(),
     )
@@ -80,6 +80,7 @@ def dashboard():
         warehouses=list(common.WAREHOUSES.keys()),
         logo_exists=(BASE_DIR / "static" / "img" / "CT-Logo.jpg").exists(),
         ct_logo_exists=(BASE_DIR / "static" / "img" / "CT-Logo.jpg").exists(),
+        bg_exists=(BASE_DIR / "static" / "img" / "bg.jpg").exists(),
         controltech_url=config.CONTROLTECH_URL,
     )
 

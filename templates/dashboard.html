@@ -6,7 +6,7 @@
   <title>{{ title }}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}" />
 </head>
-<body data-active-tab="optimized">
+<body data-active-tab="optimized"{% if bg_exists %} class="has-bg"{% endif %}>
   <header class="topbar">
     <div class="topbar-brand">
       {% if logo_exists %}
