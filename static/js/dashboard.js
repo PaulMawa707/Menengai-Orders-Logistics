@@ -114,7 +114,7 @@ function initAssetPicker() {
     }
     hiddenInput.value = String(asset.item_id);
     searchInput.value = asset.name;
-    selectedLabel.textContent = `Selected: ${asset.name} (ID ${asset.item_id})`;
+    selectedLabel.textContent = `Selected: ${asset.name}`;
     selectedLabel.classList.remove('hidden');
     hideSuggestions();
   }
@@ -138,7 +138,7 @@ function initAssetPicker() {
         li.role = 'option';
         li.dataset.itemId = asset.item_id;
         li.dataset.name = asset.name;
-        li.textContent = `${asset.name} · ID ${asset.item_id}`;
+        li.textContent = asset.name;
         li.addEventListener('mousedown', (e) => {
           e.preventDefault();
           setSelected(asset);
