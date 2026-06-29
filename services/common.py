@@ -7,6 +7,7 @@ import pytz
 WAREHOUSES = {
     "MORL": {"lat": -0.28802969095623043, "lon": 36.04494759379902},
     "AQUAMIST": {"lat": -1.2060092437779735, "lon": 36.657015788043836},
+    "STO": {"lat": -1.3029466, "lon": 36.8660916},
 }
 
 EAT = pytz.timezone("Africa/Nairobi")
