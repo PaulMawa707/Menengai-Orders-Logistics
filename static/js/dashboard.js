@@ -55,6 +55,11 @@ async function submitDispatchForm(form, endpoint) {
   const alertEl = form.querySelector('.result-alert');
   const btn = form.querySelector('[type="submit"]');
   const assetId = document.getElementById('asset-item-id');
+  const ordersInput = document.getElementById('orders-input');
+  if (!ordersInput?.files?.length) {
+    showToast('Please upload at least one orders Excel file', false);
+    return;
+  }
   if (!assetId?.value) {
     showToast('Please select an asset', false);
     return;
@@ -92,12 +97,82 @@ async function submitDispatchForm(form, endpoint) {
   }
 }
 
-function initAssetPicker() {
+function initOrdersFileList() {
+  const input = document.getElementById('orders-input');
+  const chooseBtn = document.getElementById('orders-choose-btn');
+  const listEl = document.getElementById('orders-file-list');
+  const hintEl = document.getElementById('orders-hint');
+  if (!input || !chooseBtn || !listEl) return;
+
+  let managedFiles = [];
+  let onFilesChanged = null;
+
+  function syncInputFiles() {
+    const dt = new DataTransfer();
+    managedFiles.forEach((file) => dt.items.add(file));
+    input.files = dt.files;
+    if (hintEl) {
+      hintEl.textContent = managedFiles.length
+        ? `${managedFiles.length} file(s) selected`
+        : 'No files chosen';
+    }
+    listEl.classList.toggle('hidden', managedFiles.length === 0);
+    if (typeof onFilesChanged === 'function') {
+      onFilesChanged();
+    }
+  }
+
+  function renderList() {
+    listEl.innerHTML = '';
+    managedFiles.forEach((file, index) => {
+      const li = document.createElement('li');
+      li.className = 'file-chip';
+      li.innerHTML = `
+        <span class="file-chip-name" title="${file.name}">${file.name}</span>
+        <button type="button" class="file-chip-remove" aria-label="Remove ${file.name}">×</button>
+      `;
+      li.querySelector('.file-chip-remove').addEventListener('click', () => {
+        managedFiles.splice(index, 1);
+        syncInputFiles();
+        renderList();
+      });
+      listEl.appendChild(li);
+    });
+  }
+
+  function addFiles(fileList) {
+    const existing = new Set(managedFiles.map((f) => `${f.name}:${f.size}:${f.lastModified}`));
+    [...fileList].forEach((file) => {
+      const key = `${file.name}:${file.size}:${file.lastModified}`;
+      if (!existing.has(key)) {
+        managedFiles.push(file);
+        existing.add(key);
+      }
+    });
+    syncInputFiles();
+    renderList();
+  }
+
+  chooseBtn.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => {
+    if (input.files?.length) addFiles(input.files);
+    input.value = '';
+  });
+
+  return {
+    getFiles: () => managedFiles,
+    onChange(callback) {
+      onFilesChanged = callback;
+    },
+  };
+}
+
+function initAssetPicker(ordersFileList) {
   const searchInput = document.getElementById('asset-search');
   const hiddenInput = document.getElementById('asset-item-id');
   const listEl = document.getElementById('asset-suggestions');
   const selectedLabel = document.getElementById('asset-selected-label');
-  const ordersInput = document.querySelector('input[name="orders"]');
+  const ordersInput = document.getElementById('orders-input');
   if (!searchInput || !hiddenInput || !listEl) return;
 
   let assets = [];
@@ -214,9 +289,10 @@ function initAssetPicker() {
   });
 
   async function suggestAssetFromOrders() {
-    if (!ordersInput?.files?.length) return;
+    const files = ordersFileList?.getFiles?.() || ordersInput?.files;
+    if (!files?.length) return;
     const fd = new FormData();
-    [...ordersInput.files].forEach((file) => fd.append('orders', file));
+    [...files].forEach((file) => fd.append('orders', file));
     try {
       const res = await fetch('/api/match-asset', {
         method: 'POST',
@@ -233,6 +309,7 @@ function initAssetPicker() {
     }
   }
 
+  ordersFileList?.onChange(suggestAssetFromOrders);
   ordersInput?.addEventListener('change', suggestAssetFromOrders);
 }
 
@@ -240,7 +317,8 @@ document.addEventListener('DOMContentLoaded', () => {
   tickClock();
   setInterval(tickClock, 1000);
   initDatetimeDefaults();
-  initAssetPicker();
+  const ordersFileList = initOrdersFileList();
+  initAssetPicker(ordersFileList);
 
   document.getElementById('optimized-form')?.addEventListener('submit', (e) => {
     e.preventDefault();

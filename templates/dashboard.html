@@ -33,9 +33,14 @@
 
       <form id="optimized-form" class="dispatch-form" enctype="multipart/form-data">
         <div class="form-grid">
-          <label class="field">
+          <label class="field field-full">
             <span>Orders Excel file(s)</span>
-            <input type="file" name="orders" accept=".xls,.xlsx" multiple required />
+            <div class="file-upload-wrap">
+              <input type="file" id="orders-input" name="orders" accept=".xls,.xlsx" multiple class="file-input-hidden" />
+              <button type="button" class="btn-file-choose" id="orders-choose-btn">Choose files</button>
+              <span class="file-upload-hint" id="orders-hint">No files chosen</span>
+            </div>
+            <ul id="orders-file-list" class="file-chip-list hidden" aria-live="polite"></ul>
           </label>
           <label class="field field-full asset-picker">
             <span>Asset / Truck</span>

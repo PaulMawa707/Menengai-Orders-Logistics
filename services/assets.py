@@ -1,4 +1,4 @@
-"""Load and query Menengai asset catalog from Menengai Ids.xlsx."""
+"""Load and query Menengai asset catalog from Menengai_Ids.xlsx."""
 
 from functools import lru_cache
 
@@ -7,7 +7,7 @@ import pandas as pd
 from config import BASE_DIR
 from wialon_core import normalize_plate
 
-ASSETS_FILE = BASE_DIR / "Menengai Ids.xlsx"
+ASSETS_FILE = BASE_DIR / "Menengai_Ids.xlsx"
 
 
 def _name_column(df: pd.DataFrame) -> str:

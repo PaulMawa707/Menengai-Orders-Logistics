@@ -108,6 +108,91 @@ body.has-bg > * {
 .field-full { grid-column: 1 / -1; }
 .field-hint { font-size: 0.8rem; color: var(--muted); margin-top: 0.25rem; }
 
+.file-upload-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.file-input-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.btn-file-choose {
+  border-radius: 8px;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn-file-choose:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.file-upload-hint {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.file-chip-list {
+  list-style: none;
+  margin: 0.65rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.file-chip-list.hidden { display: none; }
+
+.file-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 0.65rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.file-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-chip-remove {
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: none;
+  border-radius: 6px;
+  background: rgba(248, 81, 73, 0.15);
+  color: var(--err);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.file-chip-remove:hover {
+  background: rgba(248, 81, 73, 0.3);
+}
+
 .asset-picker-wrap { position: relative; }
 
 .asset-picker-wrap input[type="text"] {
