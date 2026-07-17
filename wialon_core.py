@@ -537,7 +537,7 @@ def send_orders_and_create_route(
                             "params": {
                                 "itemId": int(resource_id),
                                 "orders": route_orders,
-                                "uid": route_id,
+                                "routeId": route_id,
                                 "callMode": "create",
                                 "exp": 0,
                                 "f": 0,
@@ -572,18 +572,6 @@ def send_orders_and_create_route(
         )
 
         if isinstance(route_result, list):
-            has_error = any(
-                isinstance(item, dict) and item.get("error", 0) != 0
-                for item in route_result
-            )
-            if not has_error:
-                return {
-                    "error": 0,
-                    "message": "Route created successfully",
-                    "planning_url": planning_url,
-                    "optimize_result": optimize_result,
-                    "route_result": route_result,
-                }
             error_item = next(
                 (
                     item
@@ -592,14 +580,44 @@ def send_orders_and_create_route(
                 ),
                 None,
             )
+            created_orders = next(
+                (
+                    item.get("orders")
+                    for item in route_result
+                    if isinstance(item, dict)
+                    and isinstance(item.get("orders"), list)
+                    and item["orders"]
+                ),
+                None,
+            )
+            if error_item is None and created_orders:
+                return {
+                    "error": 0,
+                    "message": "Route created successfully",
+                    "planning_url": planning_url,
+                    "optimize_result": optimize_result,
+                    "route_result": route_result,
+                }
+            if error_item is None:
+                return {
+                    "error": 1,
+                    "message": (
+                        "Wialon did not confirm route creation. "
+                        f"Response: {route_result}"
+                    ),
+                }
             return {
-                "error": (error_item or {}).get("error", 1),
-                "message": (error_item or {}).get(
-                    "reason", "Unknown error in batch response"
+                "error": error_item.get("error", 1),
+                "message": error_item.get(
+                    "reason", f"Wialon route creation failed: {error_item}"
                 ),
             }
 
-        if isinstance(route_result, dict) and route_result.get("error", 1) == 0:
+        if (
+            isinstance(route_result, dict)
+            and isinstance(route_result.get("orders"), list)
+            and route_result["orders"]
+        ):
             return {
                 "error": 0,
                 "message": "Route created successfully",
