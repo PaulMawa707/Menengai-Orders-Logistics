@@ -8,6 +8,9 @@ from config import BASE_DIR
 from wialon_core import normalize_plate
 
 ASSETS_FILE = BASE_DIR / "Menengai_Ids.xlsx"
+EXTRA_ASSETS = (
+    {"item_id": 27519321, "name": "VS - Menengai - KDE 129E"},
+)
 
 
 def _name_column(df: pd.DataFrame) -> str:
@@ -45,6 +48,16 @@ def load_assets_catalog() -> tuple[dict, ...]:
                 "normalized_name": normalize_plate(name),
             }
         )
+
+    existing_item_ids = {asset["item_id"] for asset in assets}
+    for extra in EXTRA_ASSETS:
+        if extra["item_id"] not in existing_item_ids:
+            assets.append(
+                {
+                    **extra,
+                    "normalized_name": normalize_plate(extra["name"]),
+                }
+            )
 
     assets.sort(key=lambda item: item["name"].upper())
     return tuple(assets)
