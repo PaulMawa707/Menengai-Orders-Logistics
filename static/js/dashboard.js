@@ -51,12 +51,12 @@ function setAlert(el, message, type) {
   el.classList.remove('hidden');
 }
 
-async function submitDispatchForm(form, endpoint) {
+async function submitDispatchForm(form, endpoint, ordersFileList) {
   const alertEl = form.querySelector('.result-alert');
   const btn = form.querySelector('[type="submit"]');
   const assetId = document.getElementById('asset-item-id');
-  const ordersInput = document.getElementById('orders-input');
-  if (!ordersInput?.files?.length) {
+  const orderFiles = ordersFileList?.getFiles?.() || [];
+  if (!orderFiles.length) {
     showToast('Please upload at least one orders Excel file', false);
     return;
   }
@@ -66,6 +66,8 @@ async function submitDispatchForm(form, endpoint) {
   }
 
   const fd = new FormData(form);
+  fd.delete('orders');
+  orderFiles.forEach((file) => fd.append('orders', file, file.name));
   btn.disabled = true;
   if (alertEl) {
     alertEl.className = 'result-alert info';
@@ -107,10 +109,7 @@ function initOrdersFileList() {
   let managedFiles = [];
   let onFilesChanged = null;
 
-  function syncInputFiles() {
-    const dt = new DataTransfer();
-    managedFiles.forEach((file) => dt.items.add(file));
-    input.files = dt.files;
+  function notifyFilesChanged() {
     if (hintEl) {
       hintEl.textContent = managedFiles.length
         ? `${managedFiles.length} file(s) selected`
@@ -127,15 +126,21 @@ function initOrdersFileList() {
     managedFiles.forEach((file, index) => {
       const li = document.createElement('li');
       li.className = 'file-chip';
-      li.innerHTML = `
-        <span class="file-chip-name" title="${file.name}">${file.name}</span>
-        <button type="button" class="file-chip-remove" aria-label="Remove ${file.name}">×</button>
-      `;
-      li.querySelector('.file-chip-remove').addEventListener('click', () => {
+      const name = document.createElement('span');
+      name.className = 'file-chip-name';
+      name.title = file.name;
+      name.textContent = file.name;
+      const removeButton = document.createElement('button');
+      removeButton.type = 'button';
+      removeButton.className = 'file-chip-remove';
+      removeButton.setAttribute('aria-label', `Remove ${file.name}`);
+      removeButton.textContent = '×';
+      removeButton.addEventListener('click', () => {
         managedFiles.splice(index, 1);
-        syncInputFiles();
         renderList();
+        notifyFilesChanged();
       });
+      li.append(name, removeButton);
       listEl.appendChild(li);
     });
   }
@@ -149,14 +154,15 @@ function initOrdersFileList() {
         existing.add(key);
       }
     });
-    syncInputFiles();
     renderList();
+    notifyFilesChanged();
   }
 
   chooseBtn.addEventListener('click', () => input.click());
   input.addEventListener('change', () => {
-    if (input.files?.length) addFiles(input.files);
+    const selectedFiles = [...(input.files || [])];
     input.value = '';
+    if (selectedFiles.length) addFiles(selectedFiles);
   });
 
   return {
@@ -172,7 +178,7 @@ function initAssetPicker(ordersFileList) {
   const hiddenInput = document.getElementById('asset-item-id');
   const listEl = document.getElementById('asset-suggestions');
   const selectedLabel = document.getElementById('asset-selected-label');
-  const ordersInput = document.getElementById('orders-input');
+  const ordersSummary = document.getElementById('orders-summary');
   if (!searchInput || !hiddenInput || !listEl) return;
 
   let assets = [];
@@ -289,8 +295,15 @@ function initAssetPicker(ordersFileList) {
   });
 
   async function suggestAssetFromOrders() {
-    const files = ordersFileList?.getFiles?.() || ordersInput?.files;
-    if (!files?.length) return;
+    const files = ordersFileList?.getFiles?.() || [];
+    if (!files?.length) {
+      setSelected(null);
+      if (ordersSummary) {
+        ordersSummary.textContent = '';
+        ordersSummary.classList.add('hidden');
+      }
+      return;
+    }
     const fd = new FormData();
     [...files].forEach((file) => fd.append('orders', file));
     try {
@@ -300,17 +313,30 @@ function initAssetPicker(ordersFileList) {
         credentials: 'same-origin',
       });
       const data = await res.json();
+      if (data.error !== 0) {
+        throw new Error(data.message || 'Could not process the selected files');
+      }
+      if (ordersSummary && data.summary) {
+        ordersSummary.textContent =
+          `${data.summary.files} file(s) combined · ` +
+          `${data.summary.delivery_points} delivery point(s) · ` +
+          `${data.summary.tonnage} tonnes`;
+        ordersSummary.classList.remove('hidden');
+      }
       if (data.error === 0 && data.asset) {
         setSelected(data.asset);
         showToast(`Matched truck to ${data.asset.name}`, true);
       }
-    } catch (_) {
-      // Optional auto-match; ignore failures.
+    } catch (err) {
+      if (ordersSummary) {
+        ordersSummary.textContent = '';
+        ordersSummary.classList.add('hidden');
+      }
+      showToast(err.message, false);
     }
   }
 
   ordersFileList?.onChange(suggestAssetFromOrders);
-  ordersInput?.addEventListener('change', suggestAssetFromOrders);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -322,6 +348,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.getElementById('optimized-form')?.addEventListener('submit', (e) => {
     e.preventDefault();
-    submitDispatchForm(e.target, '/api/optimized/dispatch');
+    submitDispatchForm(e.target, '/api/optimized/dispatch', ordersFileList);
   });
 });

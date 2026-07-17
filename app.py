@@ -119,12 +119,20 @@ def api_match_asset():
         return jsonify({"error": 1, "message": "Upload at least one orders Excel file."}), 400
 
     try:
-        _, truck_number_norm = optimized_orders.process_multiple_excels(order_files)
+        combined_orders, truck_number_norm = optimized_orders.process_multiple_excels(
+            order_files
+        )
         asset = assets.find_asset_by_truck(truck_number_norm)
         return jsonify(
             {
                 "error": 0,
                 "truck_number": truck_number_norm,
+                "summary": {
+                    "files": len(order_files),
+                    "delivery_points": len(combined_orders),
+                    "tonnage": round(float(combined_orders["TONNAGE"].sum()), 2),
+                    "amount": round(float(combined_orders["AMOUNT"].sum()), 2),
+                },
                 "asset": (
                     {
                         "item_id": asset["item_id"],

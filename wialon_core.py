@@ -54,12 +54,18 @@ def read_excel_to_df(excel_file):
                 break
 
     header_row_idx = None
+    expected_header_cells = {"CUSTOMER ID", "CUSTOMER NAME", "LOCATION"}
     for idx, row in raw_df.iterrows():
-        if any(str(cell).strip().upper() == "NO." for cell in row):
+        normalized_cells = {
+            re.sub(r"\s+", " ", str(cell)).replace("\u00a0", " ").strip().upper()
+            for cell in row
+            if pd.notna(cell)
+        }
+        if "NO." in normalized_cells and expected_header_cells.issubset(normalized_cells):
             header_row_idx = idx
             break
     if header_row_idx is None:
-        raise ValueError("Could not locate header row (cell 'NO.' not found).")
+        raise ValueError("Could not locate the orders table header row.")
 
     df = pd.read_excel(excel_file, header=header_row_idx)
     df.columns = [
@@ -68,6 +74,11 @@ def read_excel_to_df(excel_file):
     ]
     df = df.loc[:, ~df.columns.str.startswith("UNNAMED")]
 
+    if "LOCATION COORDINATES" not in df.columns and "COORDINATES" in df.columns:
+        df = df.rename(columns={"COORDINATES": "LOCATION COORDINATES"})
+    if "INVOICE NO" not in df.columns and "INVOICE NO." in df.columns:
+        df = df.rename(columns={"INVOICE NO.": "INVOICE NO"})
+
     required_cols = {"CUSTOMER ID", "CUSTOMER NAME", "LOCATION", "LOCATION COORDINATES"}
     missing = required_cols - set(df.columns)
     if missing:
@@ -75,6 +86,8 @@ def read_excel_to_df(excel_file):
 
     df = df[df["CUSTOMER ID"].notna()]
     df = df[~df["CUSTOMER NAME"].astype(str).str.contains("TOTAL", case=False, na=False)]
+    if "REP" not in df.columns:
+        df["REP"] = ""
 
     for col in ("TONNAGE", "AMOUNT"):
         if col in df.columns:
@@ -89,6 +102,7 @@ def read_excel_to_df(excel_file):
     df_grouped = df.groupby(
         ["CUSTOMER ID", "CUSTOMER NAME", "LOCATION", "LOCATION COORDINATES", "REP"],
         as_index=False,
+        dropna=False,
     ).agg(
         {
             "TONNAGE": "sum",
@@ -128,7 +142,30 @@ def process_multiple_excels(excel_files):
         )
 
     combined_gdf = pd.concat(all_gdfs, ignore_index=True)
-    combined_gdf = combined_gdf.drop_duplicates(subset=["CUSTOMER ID", "LOCATION"], keep="first")
+    group_cols = [
+        "CUSTOMER ID",
+        "CUSTOMER NAME",
+        "LOCATION",
+        "LOCATION COORDINATES",
+        "REP",
+    ]
+    aggregations = {
+        "TONNAGE": "sum",
+        "AMOUNT": "sum",
+        "LAT": "first",
+        "LONG": "first",
+    }
+    if "INVOICE NO" in combined_gdf.columns:
+        aggregations["INVOICE NO"] = lambda values: ", ".join(
+            dict.fromkeys(
+                str(value).strip()
+                for value in values
+                if pd.notna(value) and str(value).strip()
+            )
+        )
+    combined_gdf = combined_gdf.groupby(
+        group_cols, as_index=False, dropna=False
+    ).agg(aggregations)
     sole_truck = next(iter(truck_numbers)) if truck_numbers else None
     return combined_gdf, sole_truck
 
