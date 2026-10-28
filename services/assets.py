@@ -41,11 +41,13 @@ def load_assets_catalog() -> tuple[dict, ...]:
         name = str(row[name_col]).strip()
         if not name or name.lower() == "nan":
             continue
+        short = str(row.get("shortname", "") or "").strip()
         assets.append(
             {
                 "item_id": int(item_id),
                 "name": name,
                 "normalized_name": normalize_plate(name),
+                "plate": normalize_plate(short if short and short.lower() != "nan" else name),
             }
         )
 
@@ -56,6 +58,7 @@ def load_assets_catalog() -> tuple[dict, ...]:
                 {
                     **extra,
                     "normalized_name": normalize_plate(extra["name"]),
+                    "plate": normalize_plate(extra["name"].rsplit("-", 1)[-1]),
                 }
             )
 
@@ -105,7 +108,11 @@ def find_asset_by_truck(truck_number_norm: str | None) -> dict | None:
 
     catalog = load_assets_catalog()
     for asset in catalog:
-        if asset["normalized_name"] == truck_number_norm:
+        if asset["plate"] == truck_number_norm or asset["normalized_name"] == truck_number_norm:
+            return dict(asset)
+
+    for asset in catalog:
+        if asset["normalized_name"].endswith(truck_number_norm):
             return dict(asset)
 
     for asset in catalog:

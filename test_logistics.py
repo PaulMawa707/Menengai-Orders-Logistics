@@ -166,7 +166,7 @@ class WialonHistoryTests(unittest.TestCase):
         plan = build_plan(STOPS, DEPOT, START, END, use_road=False)
         row = store.trip_row(resource_id=25601229, source="wialon", route_uid=9, route_name="R", unit_id=1, unit_name="T",
                              warehouse="MORL", day="2026-10-28", start=START, end=END, plan=plan)
-        same = {"id": "a", "source_key": row["source_key"], "unit_id": 1, "route_name": "R",
+        same = {"id": "a", "source_key": row["source_key"], "unit_id": 1, "unit_name": "T", "route_name": "R",
                 "window_from": row["window_from"], "window_to": row["window_to"], "plan": plan}
         calls = []
 
@@ -392,6 +392,20 @@ class ReportTests(unittest.TestCase):
     def test_rejects_unknown_filter(self):
         r, _ = self._get(f"/api/logistics/report-data?from={self.row['day']}&to={self.row['day']}&orders=bogus")
         self.assertEqual(r.status_code, 400)
+
+
+class AssetNameTests(unittest.TestCase):
+    def test_catalog_has_full_wialon_names_and_still_matches_plates(self):
+        from services import assets
+
+        assets.clear_assets_cache()
+        a = assets.find_asset_by_truck("KDE143E")
+        self.assertEqual(a["item_id"], 27532302)
+        self.assertEqual(a["name"], "VS - Menengai - KDE 143E")
+        self.assertTrue(assets.get_asset_by_item_id(27519321)["name"].startswith("VS - Menengai"))
+        fg = [x for x in assets.load_assets_catalog() if x["name"].startswith("FG - ")]
+        self.assertTrue(fg)
+        self.assertEqual(assets.find_asset_by_truck(fg[0]["plate"])["item_id"], fg[0]["item_id"])
 
 
 class StopOrderTests(unittest.TestCase):

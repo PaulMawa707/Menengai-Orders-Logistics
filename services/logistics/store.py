@@ -155,6 +155,7 @@ def _same_trip(have, row) -> bool:
     plan, new = have.get("plan") or {}, row["plan"]
     return (
         int(have["unit_id"]) == row["unit_id"]
+        and have.get("unit_name") == row["unit_name"]
         and have["route_name"] == row["route_name"]
         and unix(have["window_from"]) == unix(row["window_from"])
         and unix(have["window_to"]) == unix(row["window_to"])
@@ -172,7 +173,7 @@ def refresh_unfinished(rows):
         have = _request(
             "GET",
             params=[
-                ("select", "id,source_key,unit_id,route_name,window_from,window_to,plan"),
+                ("select", "id,source_key,unit_id,unit_name,route_name,window_from,window_to,plan"),
                 ("source_key", f"in.({keys})"),
                 ("source", "eq.wialon"),
                 ("result", "is.null"),
