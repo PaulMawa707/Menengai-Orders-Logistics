@@ -55,9 +55,10 @@ async function apiJson(url, opts) {
 
 // ---- Tabs ----
 
-function initTabs(trips) {
+function initTabs(trips, reports) {
   const tabs = [...document.querySelectorAll('.tab')];
   const panels = [...document.querySelectorAll('[data-panel]')];
+  const names = tabs.map((t) => t.dataset.tab);
   function show(name) {
     tabs.forEach((t) => {
       const on = t.dataset.tab === name;
@@ -71,10 +72,12 @@ function initTabs(trips) {
     });
     if (name === 'trips') trips.activate();
     else trips.deactivate();
-    history.replaceState(null, '', name === 'import' ? '#import' : location.pathname);
+    if (name === 'reports') reports.activate();
+    history.replaceState(null, '', name === 'trips' ? location.pathname : `#${name}`);
   }
   tabs.forEach((t) => t.addEventListener('click', () => show(t.dataset.tab)));
-  show(location.hash === '#import' ? 'import' : 'trips');
+  const fromHash = location.hash.slice(1);
+  show(names.includes(fromHash) ? fromHash : 'trips');
   return { show };
 }
 
@@ -687,7 +690,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let trips;
   const drawer = initDrawer(() => trips.reload());
   trips = initTrips(drawer);
-  const tabs = initTabs(trips);
+  const reports = initReports({ openTrip: (id) => drawer.open(id) });
+  const tabs = initTabs(trips, reports);
   const openTrip = (id, day) => {
     if (day) trips.showDay(day);
     tabs.show('trips');

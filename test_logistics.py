@@ -262,6 +262,74 @@ class AppTests(unittest.TestCase):
         self.assertEqual(r.status_code, 400)
 
 
+class ReportTests(unittest.TestCase):
+    def setUp(self):
+        from app import app
+
+        self.client = app.test_client()
+        with self.client.session_transaction() as s:
+            s["logged_in"] = True
+        plan = build_plan(STOPS, DEPOT, START, END, use_road=False)
+        a, b, _c = plan["stops"]
+        self.row = {
+            "id": "t1", "source": "upload", "route_name": "VS - Menengai - KDE 143E", "unit_id": 27532302,
+            "unit_name": "KDE 143E", "warehouse": "MORL", "day": service.local_day(START),
+            "window_from": store._iso(START), "window_to": store._iso(END), "plan": plan, "files": "", "created_by": "m",
+        }
+        self.tracking = {
+            "visits": [
+                {"seq": 1, "status": "on_time", "arrivedAt": a["eta"] + 60, "leftAt": a["eta"] + 600, "closestM": 10, "outOfOrder": False},
+                {"seq": 2, "status": "late", "arrivedAt": b["eta"] + 3600, "leftAt": None, "closestM": 5, "outOfOrder": False},
+                {"seq": 3, "status": "missed", "arrivedAt": None, "leftAt": None, "closestM": 148, "outOfOrder": False},
+            ],
+            "startedAt": START + 300, "returnedAt": END - 600, "km": 42.5, "path": [],
+        }
+        self.summary = service.to_summary(self.row, self.tracking, END + 7200)
+
+    def _get(self, url):
+        with patch("services.logistics.service.report_trips", return_value=[(self.row, self.tracking, self.summary)]) as rt:
+            r = self.client.get(url)
+        return r, rt
+
+    def test_report_data_has_planned_and_actual_per_order(self):
+        r, rt = self._get(f"/api/logistics/report-data?from={self.row['day']}&to={self.row['day']}&unit=27532302")
+        body = r.get_json()
+        self.assertEqual(r.status_code, 200, body)
+        self.assertEqual(rt.call_args.kwargs["unit_id"], 27532302)
+        trip = body["trips"][0]
+        self.assertEqual(trip["actual"], {"startedAt": START + 300, "returnedAt": END - 600, "km": 42.5})
+        self.assertEqual([s["status"] for s in trip["stops"]], ["on_time", "late", "missed"])
+        self.assertEqual(trip["stops"][0]["deviationMin"], 1)
+        self.assertEqual(trip["stops"][1]["deviationMin"], 60)
+        self.assertIsNone(trip["stops"][2]["arrivedAt"])
+        self.assertEqual(trip["stops"][2]["closestM"], 148)
+
+    def test_orders_filter_keeps_trips_with_a_matching_order(self):
+        day = self.row["day"]
+        r, _ = self._get(f"/api/logistics/report-data?from={day}&to={day}&orders=not_visited")
+        self.assertEqual(len(r.get_json()["trips"]), 1)
+        self.tracking["visits"][2]["status"] = "on_time"
+        self.tracking["visits"][1]["status"] = "on_time"
+        r, _ = self._get(f"/api/logistics/report-data?from={day}&to={day}&orders=not_visited")
+        self.assertEqual(r.get_json()["trips"], [])
+
+    def test_excel_routes_report_has_only_the_trips_sheet(self):
+        import pandas as pd
+        from io import BytesIO
+
+        day = self.row["day"]
+        r, _ = self._get(f"/api/logistics/report?from={day}&to={day}&kind=routes")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(list(pd.read_excel(BytesIO(r.data), sheet_name=None)), ["Trips"])
+        r, _ = self._get(f"/api/logistics/report?from={day}&to={day}&kind=orders&orders=not_visited")
+        sheets = pd.read_excel(BytesIO(r.data), sheet_name=None)
+        self.assertEqual(sheets["Stops"]["Status"].tolist(), ["Missed"])
+
+    def test_rejects_unknown_filter(self):
+        r, _ = self._get(f"/api/logistics/report-data?from={self.row['day']}&to={self.row['day']}&orders=bogus")
+        self.assertEqual(r.status_code, 400)
+
+
 class StopOrderTests(unittest.TestCase):
     def test_nearest_next_stop_chains_from_the_warehouse(self):
         import pandas as pd

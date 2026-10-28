@@ -325,11 +325,16 @@ def trip_detail(token, resource_id, trip_id):
     return {**to_summary(row, tracking, now), "plan": row["plan"], "tracking": tracking, "now": now, "tz": TZ_S}
 
 
-def report_trips(token, resource_id, day_from, day_to):
-    """Every trip of a period with planned-vs-actual per stop; each vehicle's positions are read once per day."""
+def report_trips(token, resource_id, day_from, day_to, unit_id=None, failed=None):
+    """Every trip of a period with planned-vs-actual per stop; each vehicle's positions are read once per day.
+
+    Trips whose positions could not be loaded are appended to `failed` (when given).
+    """
     now = int(time.time())
     sync_wialon_history(token, resource_id, day_from, day_to, now)
     rows = store.list_trips(resource_id, day_from, day_to, with_results=True)
+    if unit_id:
+        rows = [r for r in rows if int(r["unit_id"]) == int(unit_id)]
     tracking = [r.get("result") for r in rows]
     groups = {}
     for i, r in enumerate(rows):
@@ -348,6 +353,8 @@ def report_trips(token, resource_id, day_from, day_to):
             pts = wialon.unit_track(token, g["unit"], g["from"], g["to"])
         except Exception as exc:
             print(f"[logistics] report tracking failed: {exc}")
+            if failed is not None:
+                failed.extend(g["idx"])
             return
         for i in g["idx"]:
             r = rows[i]
@@ -360,3 +367,62 @@ def report_trips(token, resource_id, day_from, day_to):
     with ThreadPoolExecutor(max_workers=REPORT_WORKERS) as pool:
         list(pool.map(run, groups.values()))
     return [(r, tracking[i], to_summary(r, tracking[i], now)) for i, r in enumerate(rows)]
+
+
+def to_report_trip(row, tracking, summary):
+    """A trip with every stop planned against actual, for the Reports tab."""
+    plan = row["plan"]
+    visits = {v["seq"]: v for v in (tracking or {}).get("visits", [])}
+    km = 0.0
+    stops = []
+    for st in plan["stops"]:
+        km += st.get("legKm", 0)
+        v = visits.get(st["seq"], {})
+        arrived = v.get("arrivedAt")
+        stops.append(
+            {
+                "seq": st["seq"],
+                "name": st["name"],
+                "location": st.get("location", ""),
+                "invoice": st.get("invoice", ""),
+                "amount": st.get("amount", 0),
+                "weightKg": st.get("weightKg", 0),
+                "lat": st["lat"],
+                "lon": st["lon"],
+                "eta": st["eta"],
+                "etd": st["etd"],
+                "plannedKm": round(km, 1),
+                "status": v.get("status", "pending"),
+                "arrivedAt": arrived,
+                "leftAt": v.get("leftAt"),
+                "deviationMin": round((arrived - st["eta"]) / 60) if arrived else None,
+                "closestM": v.get("closestM"),
+                "outOfOrder": bool(v.get("outOfOrder")),
+            }
+        )
+    return {
+        "id": row["id"],
+        "source": summary["source"],
+        "routeName": summary["routeName"],
+        "unitId": summary["unitId"],
+        "unitName": summary["unitName"],
+        "warehouse": summary["warehouse"],
+        "day": summary["day"],
+        "state": summary["state"],
+        "createdBy": summary["createdBy"],
+        "planned": {
+            "start": plan["start"],
+            "end": plan["end"],
+            "returnAt": plan["returnAt"],
+            "km": plan["km"],
+            "driveMin": plan.get("driveMin", 0),
+            "serviceMin": plan.get("serviceMin", 0),
+        },
+        "actual": (
+            {"startedAt": tracking.get("startedAt"), "returnedAt": tracking.get("returnedAt"), "km": tracking.get("km", 0)}
+            if tracking
+            else None
+        ),
+        "progress": summary["progress"],
+        "stops": stops,
+    }

@@ -2,6 +2,7 @@ import csv
 import io
 import os
 import re
+import time
 from datetime import date, datetime
 from functools import wraps
 from pathlib import Path
@@ -442,16 +443,78 @@ def api_trip_export(trip_id):
     )
 
 
+VISITED = {"on_time", "early", "late"}
+# Which orders a report includes, as in Wialon Logistics.
+ORDER_FILTERS = {
+    "all": lambda status: True,
+    "visited": lambda status: status in VISITED,
+    "not_visited": lambda status: status not in VISITED,
+    "in_time": lambda status: status in ("on_time", "early"),
+    "late": lambda status: status == "late",
+}
+
+
+def _report_params():
+    day_from, day_to = _day_range()
+    unit = request.args.get("unit", "").strip()
+    try:
+        unit_id = int(unit) if unit else None
+    except ValueError:
+        raise ValueError("Choose a vehicle from the list")
+    order_filter = request.args.get("orders", "all")
+    if order_filter not in ORDER_FILTERS:
+        raise ValueError("Unknown orders filter")
+    kind = request.args.get("kind", "orders")
+    if kind not in ("routes", "orders"):
+        raise ValueError("Unknown report")
+    return day_from, day_to, unit_id, order_filter, kind
+
+
+def _visit_status(tracking, seq):
+    for v in (tracking or {}).get("visits", []):
+        if v["seq"] == seq:
+            return v["status"]
+    return "pending"
+
+
+def _keeps(row, tracking, order_filter):
+    """A trip is in a filtered report when at least one of its orders passes the filter."""
+    match = ORDER_FILTERS[order_filter]
+    return order_filter == "all" or any(match(_visit_status(tracking, st["seq"])) for st in row["plan"]["stops"])
+
+
+@app.route("/api/logistics/report-data")
+@login_required
+def api_report_data():
+    """Trips of a period with every order planned against actual, for the Reports tab (read-only on Wialon)."""
+    try:
+        day_from, day_to, unit_id, order_filter, _kind = _report_params()
+        failed = []
+        trips = logistics.report_trips(
+            config.WIALON_TOKEN, config.WIALON_RESOURCE_ID, day_from, day_to, unit_id=unit_id, failed=failed
+        )
+    except Exception as exc:
+        return _trips_error(exc)
+    out = [logistics.to_report_trip(row, tracking, s) for row, tracking, s in trips if _keeps(row, tracking, order_filter)]
+    out.sort(key=lambda t: (t["day"], t["planned"]["start"], t["routeName"]))
+    return jsonify(
+        {"error": 0, "from": day_from, "to": day_to, "trips": out, "failed": len(failed), "now": int(time.time()), "tz": logistics.TZ_S}
+    )
+
+
 @app.route("/api/logistics/report")
 @login_required
 def api_trips_report():
     try:
-        day_from, day_to = _day_range()
-        trips = logistics.report_trips(config.WIALON_TOKEN, config.WIALON_RESOURCE_ID, day_from, day_to)
+        day_from, day_to, unit_id, order_filter, kind = _report_params()
+        trips = logistics.report_trips(config.WIALON_TOKEN, config.WIALON_RESOURCE_ID, day_from, day_to, unit_id=unit_id)
     except Exception as exc:
         return _trips_error(exc)
+    match = ORDER_FILTERS[order_filter]
     trip_rows, stop_rows = [], []
     for row, tracking, s in trips:
+        if not _keeps(row, tracking, order_filter):
+            continue
         p = s["progress"] or {}
         trip_rows.append(
             {
@@ -479,11 +542,12 @@ def api_trips_report():
                 "Files": s["files"],
             }
         )
-        stop_rows.extend(_stop_rows(row, tracking, s))
+        stop_rows.extend(r for r in _stop_rows(row, tracking, s) if match(_visit_status(tracking, r["Stop #"])))
     out = io.BytesIO()
     with pd.ExcelWriter(out, engine="openpyxl") as writer:
         pd.DataFrame(trip_rows).to_excel(writer, sheet_name="Trips", index=False)
-        pd.DataFrame(stop_rows).to_excel(writer, sheet_name="Stops", index=False)
+        if kind == "orders":
+            pd.DataFrame(stop_rows).to_excel(writer, sheet_name="Stops", index=False)
     out.seek(0)
     period = day_from if day_from == day_to else f"{day_from} to {day_to}"
     return send_file(

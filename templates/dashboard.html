@@ -33,6 +33,7 @@
 
     <nav class="tabs" role="tablist">
       <button type="button" class="tab active" data-tab="trips" role="tab" aria-selected="true">🚚 Trips</button>
+      <button type="button" class="tab" data-tab="reports" role="tab" aria-selected="false">📊 Reports</button>
       <button type="button" class="tab" data-tab="import" role="tab" aria-selected="false">📄 Import from Excel</button>
     </nav>
 
@@ -65,6 +66,43 @@
         <div class="pager" id="trips-pager"></div>
       </div>
       <p class="data-meta" id="trips-meta"></p>
+    </section>
+
+    <section class="panel" data-panel="reports" hidden>
+      <div class="card report-params">
+        <div class="card-head"><b>Report parameters</b><span class="sub">As in Wialon Logistics: pick the days, vehicle and orders, then Execute.</span></div>
+        <div class="report-form">
+          <label class="field"><span>Report</span>
+            <select id="rep-kind">
+              <option value="routes" selected>Routes</option>
+              <option value="orders">Routes and orders</option>
+            </select>
+          </label>
+          <label class="field"><span>From</span><input type="date" id="rep-from" /></label>
+          <label class="field"><span>To</span><input type="date" id="rep-to" /></label>
+          <label class="field grow"><span>Vehicle</span>
+            <select id="rep-unit"><option value="">All vehicles</option></select>
+          </label>
+          <label class="field"><span>Orders</span>
+            <select id="rep-orders">
+              <option value="all" selected>All orders</option>
+              <option value="visited">Visited</option>
+              <option value="not_visited">Not visited</option>
+              <option value="in_time">Visited in time</option>
+              <option value="late">Visited late</option>
+            </select>
+          </label>
+          <button type="button" class="btn-primary" id="rep-run">▶ Execute</button>
+        </div>
+        <div class="report-quick">
+          <span class="quick-label">Delivery day</span>
+          <span id="rep-periods"></span>
+          <span class="sub quick-note" id="rep-note">Actual times come from vehicle positions in Wialon (read only). Finished trips are kept, so later reports open faster.</span>
+        </div>
+      </div>
+      <div id="rep-results">
+        <div class="card"><div class="empty"><b>Set the report parameters and click Execute</b><p>You get every trip of the period with its orders: planned against actual arrival, departure, service time and mileage, and the orders that were missed.</p></div></div>
+      </div>
     </section>
 
     <section class="panel" data-panel="import" hidden>
@@ -215,6 +253,7 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/reports.js') }}"></script>
   <script src="{{ url_for('static', filename='js/trips.js') }}"></script>
 </body>
 </html>
