@@ -160,35 +160,46 @@ def _same_trip(have, row) -> bool:
         and unix(have["window_from"]) == unix(row["window_from"])
         and unix(have["window_to"]) == unix(row["window_to"])
         and plan.get("km") == new.get("km")
+        and _same_path(have, row)
         and [(s.get("name"), s.get("eta")) for s in plan.get("stops", [])] == [(s["name"], s["eta"]) for s in new["stops"]]
     )
 
 
+def _same_path(have, row) -> bool:
+    a, b = (have.get("plan") or {}).get("geometry") or [], row["plan"].get("geometry") or []
+    return len(a) == len(b) and a[:1] == b[:1] and a[-1:] == b[-1:]
+
+
 def refresh_unfinished(rows):
     """Brings trips read from Wialon up to date while they have no final result (running routes can still be edited
-    there). Uploads keep the plan made by this app."""
+    there); finished ones only get the planned road path. Uploads keep the plan made by this app."""
     for i in range(0, len(rows), 50):
         part = {r["source_key"]: r for r in rows[i : i + 50]}
         keys = ",".join(f'"{k}"' for k in part)
         have = _request(
             "GET",
             params=[
-                ("select", "id,source_key,unit_id,unit_name,route_name,window_from,window_to,plan"),
+                ("select", "id,source_key,unit_id,unit_name,route_name,window_from,window_to,plan,result_at"),
                 ("source_key", f"in.({keys})"),
                 ("source", "eq.wialon"),
-                ("result", "is.null"),
                 ("removed_at", "is.null"),
             ],
             what="Loading trips from Wialon",
         ).json()
         for h in have:
             row = part.get(h["source_key"])
-            if not row or _same_trip(h, row):
+            if not row:
+                continue
+            if not h.get("result_at") and not _same_trip(h, row):
+                patch = {k: row[k] for k in ("unit_id", "unit_name", "route_name", "warehouse", "day", "window_from", "window_to", "plan")}
+            elif not _same_path(h, row):
+                patch = {"plan": {**h["plan"], "geometry": row["plan"]["geometry"], "routing": row["plan"]["routing"]}}
+            else:
                 continue
             _request(
                 "PATCH",
                 params={"id": f"eq.{h['id']}"},
-                json={k: row[k] for k in ("unit_id", "unit_name", "route_name", "warehouse", "day", "window_from", "window_to", "plan")},
+                json=patch,
                 headers={"Prefer": "return=minimal"},
                 what="Updating a trip from Wialon",
             )

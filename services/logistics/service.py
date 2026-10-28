@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from services import assets
 
 from . import store, wialon
+from .geo import decode_polyline, thin
 from .plan import RULES, build_plan
 from .track import LEAD_S, TAIL_S, TRIP_STATES, progress_of, track_plan, trip_state
 
@@ -22,6 +23,8 @@ FRESH_S = 300
 # Wialon order flags: 0x100 marks a warehouse (start 260, end 264).
 WAREHOUSE_FLAG = 0x100
 WORKERS = 4
+# Planned road path points kept per trip (enough for the map, small enough for list queries).
+MAX_GEOMETRY = 1200
 # Wialon refuses more than about 10 concurrent requests per user.
 REPORT_WORKERS = 6
 
@@ -122,7 +125,16 @@ def _wialon_plan(orders):
     return_at = return_at or stops[-1]["etd"]
     deadlines = [int(o.get("tt") or 0) for o in pts if start < int(o.get("tt") or 0) <= start + 2 * 86400]
     end = max(deadlines) if deadlines else return_at
-    geometry = ([[depot["lat"], depot["lon"]]] if depot else []) + [[s["lat"], s["lon"]] for s in stops] + ([[depot["lat"], depot["lon"]]] if depot else [])
+    # Each order's path ("rp") is the planned road from the previous point to it.
+    road = []
+    for o in pts:
+        leg = decode_polyline(o.get("rp") or "")
+        road.extend(leg[1:] if road and leg else leg)
+    if len(road) >= 2:
+        geometry, routing = thin([[round(y, 5), round(x, 5)] for y, x in road], MAX_GEOMETRY), "wialon_road"
+    else:
+        ends = [[depot["lat"], depot["lon"]]] if depot else []
+        geometry, routing = ends + [[s["lat"], s["lon"]] for s in stops] + ends, "wialon"
     return {
         "depot": depot,
         "start": start,
@@ -132,7 +144,7 @@ def _wialon_plan(orders):
         "driveMin": round(drive / 60),
         "serviceMin": round(service / 60),
         "stops": stops,
-        "routing": "wialon",
+        "routing": routing,
         "geometry": geometry,
         "overrun": return_at > end,
         "rules": dict(RULES),

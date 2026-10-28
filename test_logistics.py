@@ -188,6 +188,46 @@ class WialonHistoryTests(unittest.TestCase):
             store.refresh_unfinished([row])
         self.assertEqual(calls, ["GET", "GET", "PATCH"])
 
+    def test_finished_trip_only_gets_the_road_path(self):
+        plan = build_plan(STOPS, DEPOT, START, END, use_road=False)
+        road = {**plan, "routing": "wialon_road", "geometry": [[-0.288, 36.045], [-0.29, 36.046], [-0.297, 36.05]]}
+        row = store.trip_row(resource_id=25601229, source="wialon", route_uid=9, route_name="New name", unit_id=1, unit_name="T",
+                             warehouse="MORL", day="2026-10-28", start=START, end=END, plan=road)
+        have = {"id": "a", "source_key": row["source_key"], "unit_id": 1, "unit_name": "T", "route_name": "Old name",
+                "window_from": row["window_from"], "window_to": row["window_to"], "plan": plan, "result_at": "2026-10-28T20:00:00Z"}
+        patches = []
+
+        class Res:
+            def json(self):
+                return [have]
+
+        def fake(method, **kw):
+            if method == "PATCH":
+                patches.append(kw["json"])
+            return Res()
+
+        with patch("services.logistics.store._request", side_effect=fake):
+            store.refresh_unfinished([row])
+        self.assertEqual(list(patches[0]), ["plan"])
+        self.assertEqual(patches[0]["plan"]["geometry"], road["geometry"])
+        self.assertEqual(patches[0]["plan"]["stops"], plan["stops"])
+
+    def test_wialon_route_uses_the_planned_road_path(self):
+        from services.logistics.geo import decode_polyline
+
+        rp = "bgw@}__{EQ~B[Cc@E_AGa@CQEC?IX]bAMVGPe@jACBGHE@EBG@@@?@@B@B?D@DAB?D?BABADCFCBCBA@"
+        leg = decode_polyline(rp)
+        self.assertAlmostEqual(leg[0][0], -0.28802, places=5)
+        self.assertAlmostEqual(leg[0][1], 36.04495, places=5)
+        orders = [
+            {"uid": 1, "n": "MORL", "f": 260, "y": DEPOT["lat"], "x": DEPOT["lon"], "u": 7, "p": {"r": {"id": 5, "i": 0, "vt": START}}},
+            {"uid": 2, "n": "Shop", "f": 0, "y": leg[-1][0], "x": leg[-1][1], "u": 7, "rp": rp, "p": {"r": {"id": 5, "i": 1, "vt": START + 600}}},
+        ]
+        day = service.local_day(START)
+        plan = service.wialon_trip_rows(25601229, [], orders, day, day, {7: "T"})[0]["plan"]
+        self.assertEqual(plan["routing"], "wialon_road")
+        self.assertEqual(len(plan["geometry"]), len(leg))
+
     def test_upload_and_history_share_the_route_key(self):
         upload = store.trip_row(
             resource_id=25601229, source="upload", route_uid=1793000000, route_name="x", unit_id=1, unit_name="x",

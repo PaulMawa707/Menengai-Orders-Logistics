@@ -292,10 +292,12 @@ function initTrips(drawer) {
     meta: document.getElementById('trips-meta'),
     storage: document.getElementById('trips-storage-alert'),
   };
+  // Today and tomorrow, so trips planned for tomorrow show as scheduled.
   const today = todayEat();
-  const st = { from: today, to: today, q: '', state: null, page: 1, sort: null, data: null, timer: null, active: false, seq: 0 };
+  const tomorrow = nextDay(today);
+  const st = { from: today, to: tomorrow, q: '', state: null, page: 1, sort: null, data: null, timer: null, active: false, seq: 0 };
   el.from.value = today;
-  el.to.value = today;
+  el.to.value = tomorrow;
 
   function rangeInvalid() {
     const f = el.from.value;
@@ -520,7 +522,8 @@ function initDrawer(onChanged) {
           .map(([k, s]) => `<span><span class="dot ${VISIT_META[s].cls}"></span>${VISIT_META[s].label} <b>${p[k]}</b></span>`)
           .join('')}${p.outOfOrder ? `<span class="warn">${p.outOfOrder} out of order</span>` : ''}</div></div>`
       : '';
-    const routing = plan.routing === 'osrm' ? 'Road routing' : plan.routing === 'wialon' ? 'Wialon plan' : 'Straight line';
+    const routing =
+      plan.routing === 'osrm' ? 'Road routing' : plan.routing === 'wialon_road' ? 'Wialon road plan' : plan.routing === 'wialon' ? 'Wialon plan' : 'Straight line';
     const stopRows = plan.stops
       .map((s) => {
         const v = visits.get(s.seq);
