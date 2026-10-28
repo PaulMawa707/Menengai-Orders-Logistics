@@ -56,7 +56,6 @@ async function apiJson(url, opts) {
 // ---- Tabs ----
 
 function initTabs(trips) {
-  const main = document.getElementById('main-content');
   const tabs = [...document.querySelectorAll('.tab')];
   const panels = [...document.querySelectorAll('[data-panel]')];
   function show(name) {
@@ -70,14 +69,208 @@ function initTabs(trips) {
       p.hidden = !on;
       p.classList.toggle('active', on);
     });
-    main.classList.toggle('wide', name === 'trips');
     if (name === 'trips') trips.activate();
     else trips.deactivate();
-    history.replaceState(null, '', name === 'trips' ? '#trips' : location.pathname);
+    history.replaceState(null, '', name === 'import' ? '#import' : location.pathname);
   }
   tabs.forEach((t) => t.addEventListener('click', () => show(t.dataset.tab)));
-  if (location.hash === '#trips') show('trips');
+  show(location.hash === '#import' ? 'import' : 'trips');
   return { show };
+}
+
+// ---- Plan a trip ----
+
+const nextDay = (day) => new Date(Date.parse(`${day}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+
+function drawPlanMap(host, plan) {
+  if (!window.L || !host) {
+    if (host) host.innerHTML = '<div class="empty"><p>The map could not be loaded.</p></div>';
+    return null;
+  }
+  const map = L.map(host, { scrollWheelZoom: false });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
+  const bounds = [];
+  if (plan.geometry?.length) {
+    L.polyline(plan.geometry, { color: '#6366f1', weight: 3, opacity: 0.7, dashArray: '6 6' }).addTo(map);
+    bounds.push(...plan.geometry);
+  }
+  if (plan.depot) {
+    L.marker([plan.depot.lat, plan.depot.lon], { icon: L.divIcon({ className: 'pin depot', html: 'W', iconSize: [26, 26] }) })
+      .bindTooltip(esc(plan.depot.name))
+      .addTo(map);
+    bounds.push([plan.depot.lat, plan.depot.lon]);
+  }
+  plan.stops.forEach((s) => {
+    L.marker([s.lat, s.lon], { icon: L.divIcon({ className: 'pin', html: `<span style="background:${VISIT_META.planned.hex}">${s.seq}</span>`, iconSize: [24, 24] }) })
+      .bindTooltip(`${s.seq}. ${esc(s.name)} · ETA ${fmtTime(s.eta)}`)
+      .addTo(map);
+    bounds.push([s.lat, s.lon]);
+  });
+  if (bounds.length) map.fitBounds(bounds, { padding: [24, 24] });
+  else map.setView([-0.29, 36.04], 8);
+  setTimeout(() => map.invalidateSize(), 50);
+  return map;
+}
+
+function initPlanTrip({ onDispatched }) {
+  const drawer = document.getElementById('plan-drawer');
+  const backdrop = document.getElementById('plan-drawer-backdrop');
+  const el = {
+    day: document.getElementById('plan-day'),
+    from: document.getElementById('plan-from'),
+    to: document.getElementById('plan-to'),
+    warehouse: document.getElementById('plan-warehouse'),
+    order: document.getElementById('plan-order'),
+    asset: document.getElementById('plan-asset-item-id'),
+    preview: document.getElementById('plan-preview'),
+    dispatch: document.getElementById('plan-dispatch'),
+    alert: document.getElementById('plan-alert'),
+    result: document.getElementById('plan-result'),
+  };
+  const files = initOrdersFileList('plan-');
+  const picker = initAssetPicker(files, 'plan-');
+  let map = null;
+  let busy = false;
+
+  function setAlert(html, type) {
+    el.alert.className = `result-alert ${type}`;
+    el.alert.innerHTML = html;
+  }
+
+  function invalidate() {
+    el.dispatch.disabled = true;
+    el.result.innerHTML = '';
+    el.alert.className = 'result-alert hidden';
+    if (map) {
+      map.remove();
+      map = null;
+    }
+  }
+  files.onChange(invalidate);
+  picker.onChange(invalidate);
+  [el.day, el.from, el.to, el.warehouse, el.order].forEach((i) => i.addEventListener('change', invalidate));
+
+  function formData() {
+    const list = files.getFiles();
+    if (!list.length) throw new Error('Choose the orders Excel file(s)');
+    if (!el.asset.value) throw new Error('Choose the vehicle');
+    if (!el.day.value || !el.from.value || !el.to.value) throw new Error('Choose the day and the window');
+    const endDay = el.to.value <= el.from.value ? nextDay(el.day.value) : el.day.value;
+    const fd = new FormData();
+    list.forEach((f) => fd.append('orders', f, f.name));
+    fd.set('asset_item_id', el.asset.value);
+    fd.set('warehouse', el.warehouse.value);
+    fd.set('stop_order', el.order.value);
+    fd.set('route_from', `${el.day.value}T${el.from.value}`);
+    fd.set('route_end', `${endDay}T${el.to.value}`);
+    return fd;
+  }
+
+  function render(d) {
+    const p = d.plan;
+    const tz = d.tz;
+    const stops = p.stops
+      .map(
+        (s) => `<tr><td class="num">${s.seq}</td><td><div class="strong">${esc(s.name)}</div><div class="sub">${esc(
+          [s.location, s.weightKg ? `${fmtNum(s.weightKg)} kg` : ''].filter(Boolean).join(' · '),
+        )}</div></td><td class="right nowrap">${fmtNum(s.legKm, 1)} km</td><td class="right nowrap strong">${fmtTime(s.eta, tz)}</td></tr>`,
+      )
+      .join('');
+    const sum = d.summary;
+    el.result.innerHTML = `
+      <div class="facts">
+        <div class="fact"><span>Stops</span><b>${fmtNum(p.stops.length)}</b><small>${fmtNum(sum.tonnage, 2)} t${sum.amount ? ` · ${fmtNum(sum.amount)}` : ''}</small></div>
+        <div class="fact"><span>Distance</span><b>${fmtNum(p.km, 1)} km</b><small>${p.routing === 'osrm' ? 'by road' : 'straight line'}</small></div>
+        <div class="fact"><span>Driving</span><b>${fmtNum(p.driveMin)} min</b><small>${fmtNum(p.serviceMin)} min at stops</small></div>
+        <div class="fact"><span>Back</span><b class="${p.overrun ? 'bad' : ''}">${fmtTime(p.returnAt, tz)}</b><small class="${p.overrun ? 'bad' : ''}">${p.overrun ? 'after the window ends' : 'within the window'}</small></div>
+      </div>
+      <div class="trip-map plan-map" id="plan-map"></div>
+      <div class="card"><div class="card-head"><b>Schedule</b><span class="sub">${esc(d.asset.name)} · from ${esc(p.depot?.name || '')} at ${fmtTime(p.start, tz)}</span></div>
+        <div class="table-wrap plan-stops"><table class="stops-table"><thead><tr><th class="num">#</th><th>Stop</th><th class="right">Leg</th><th class="right">ETA</th></tr></thead><tbody>${stops}</tbody></table></div>
+      </div>`;
+    map = drawPlanMap(document.getElementById('plan-map'), p);
+  }
+
+  async function preview() {
+    if (busy) return;
+    let fd;
+    try {
+      fd = formData();
+    } catch (err) {
+      setAlert(`⚠️ ${esc(err.message)}`, 'err');
+      return;
+    }
+    busy = true;
+    invalidate();
+    el.preview.disabled = true;
+    setAlert('Reading the orders and planning the schedule…', 'info');
+    try {
+      const d = await apiJson('/api/logistics/plan-preview', { method: 'POST', body: fd });
+      el.alert.className = 'result-alert hidden';
+      render(d);
+      el.dispatch.disabled = false;
+    } catch (err) {
+      setAlert(`❌ ${esc(err.message)}`, 'err');
+    } finally {
+      busy = false;
+      el.preview.disabled = false;
+    }
+  }
+
+  async function dispatch() {
+    if (busy) return;
+    let fd;
+    try {
+      fd = formData();
+    } catch (err) {
+      setAlert(`⚠️ ${esc(err.message)}`, 'err');
+      return;
+    }
+    busy = true;
+    el.dispatch.disabled = true;
+    el.preview.disabled = true;
+    setAlert('Sending the route to Wialon…', 'info');
+    try {
+      const d = await apiJson('/api/optimized/dispatch', { method: 'POST', body: fd });
+      showToast('Route created successfully', true);
+      if (d.trip_id) {
+        close();
+        files.clear();
+        picker.clear();
+        onDispatched(d.trip_id, d.trip_day);
+      } else {
+        setAlert(`✅ ${esc(d.message || 'Route created.')}${d.trip_warning ? `<br>⚠️ ${esc(d.trip_warning)}` : ''}`, 'ok');
+      }
+    } catch (err) {
+      setAlert(`❌ ${esc(err.message)}`, 'err');
+      el.dispatch.disabled = false;
+    } finally {
+      busy = false;
+      el.preview.disabled = false;
+    }
+  }
+
+  function close() {
+    drawer.classList.add('hidden');
+    backdrop.classList.add('hidden');
+    drawer.setAttribute('aria-hidden', 'true');
+  }
+
+  el.preview.addEventListener('click', preview);
+  el.dispatch.addEventListener('click', dispatch);
+  document.getElementById('plan-close').addEventListener('click', close);
+  backdrop.addEventListener('click', close);
+  document.addEventListener('keydown', (e) => e.key === 'Escape' && !drawer.classList.contains('hidden') && close());
+
+  return {
+    open(day) {
+      if (!el.day.value) el.day.value = day || todayEat();
+      drawer.classList.remove('hidden');
+      backdrop.classList.remove('hidden');
+      drawer.setAttribute('aria-hidden', 'false');
+      if (map) setTimeout(() => map.invalidateSize(), 50);
+    },
+  };
 }
 
 // ---- Trips list ----
@@ -150,7 +343,7 @@ function initTrips(drawer) {
     if (!data.rows.length) {
       const filtered = st.q || st.state;
       el.body.innerHTML = `<div class="empty"><b>${filtered ? 'No trips match' : `No trips for ${esc(period)}`}</b><p>${
-        filtered ? 'Try clearing the filters.' : 'Upload orders in the Upload & Dispatch tab; each dispatched route appears here on its day.'
+        filtered ? 'Try clearing the filters.' : 'Use Plan a trip or the Import from Excel tab; each dispatched route appears here on its day.'
       }</p></div>`;
       el.pager.innerHTML = '';
       return;
@@ -253,6 +446,7 @@ function initTrips(drawer) {
       clearInterval(st.timer);
     },
     reload: () => load(true),
+    day: () => st.from,
     showDay(day) {
       st.from = day;
       st.to = day;
@@ -494,11 +688,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const drawer = initDrawer(() => trips.reload());
   trips = initTrips(drawer);
   const tabs = initTabs(trips);
-  window.menengaiTrips = {
-    openTrip(id, day) {
-      if (day) trips.showDay(day);
-      tabs.show('trips');
-      if (id) drawer.open(id);
-    },
+  const openTrip = (id, day) => {
+    if (day) trips.showDay(day);
+    tabs.show('trips');
+    if (id) drawer.open(id);
   };
+  const plan = initPlanTrip({ onDispatched: openTrip });
+  document.getElementById('plan-open').addEventListener('click', () => plan.open(trips.day()));
+  window.menengaiTrips = { openTrip };
 });

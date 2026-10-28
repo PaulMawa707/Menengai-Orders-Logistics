@@ -155,65 +155,109 @@ def api_match_asset():
         return jsonify({"error": 1, "message": str(exc)}), 400
 
 
-@app.route("/api/optimized/dispatch", methods=["POST"])
-@login_required
-def api_optimized_dispatch():
+class BadDispatch(ValueError):
+    pass
+
+
+def _dispatch_inputs():
+    """Validated upload: orders combined from the files, the truck, warehouse, window and stop order."""
     order_files = request.files.getlist("orders")
     asset_item_id = request.form.get("asset_item_id", "").strip()
     if not order_files or any(not f.filename for f in order_files):
-        return jsonify({"error": 1, "message": "Please upload orders Excel file(s)."}), 400
+        raise BadDispatch("Please upload orders Excel file(s).")
     if not asset_item_id:
-        return jsonify({"error": 1, "message": "Please select an asset."}), 400
-
+        raise BadDispatch("Please select an asset.")
     for f in order_files:
         if not allowed_file(f.filename):
-            return jsonify({"error": 1, "message": "Invalid orders file type."}), 400
-
+            raise BadDispatch("Invalid orders file type.")
     try:
         unit_id = int(asset_item_id)
     except ValueError:
-        return jsonify({"error": 1, "message": "Invalid asset selection."}), 400
-
+        raise BadDispatch("Invalid asset selection.")
     asset = assets.get_asset_by_item_id(unit_id)
     if not asset:
-        return jsonify({"error": 1, "message": "Selected asset was not found."}), 400
-
-    warehouse_choice = request.form.get("warehouse", "MORL")
-    if warehouse_choice not in common.WAREHOUSES:
-        return jsonify({"error": 1, "message": f"Unknown warehouse: {warehouse_choice}"}), 400
-
+        raise BadDispatch("Selected asset was not found.")
+    warehouse = request.form.get("warehouse", "MORL")
+    if warehouse not in common.WAREHOUSES:
+        raise BadDispatch(f"Unknown warehouse: {warehouse}")
+    stop_order = request.form.get("stop_order", "warehouse")
+    if stop_order not in optimized_orders.STOP_ORDERS:
+        raise BadDispatch(f"Unknown stop order: {stop_order}")
     try:
         tf, tt = common.compute_route_timestamps_from_range(
             request.form.get("route_from"),
             request.form.get("route_end"),
         )
     except ValueError as exc:
+        raise BadDispatch(str(exc))
+
+    orders, truck_number_norm = optimized_orders.process_multiple_excels(order_files)
+    if orders is None or orders.empty:
+        raise BadDispatch("No delivery rows with valid coordinates were found.")
+    if truck_number_norm and asset["normalized_name"] != truck_number_norm:
+        if truck_number_norm not in asset["normalized_name"]:
+            raise BadDispatch(
+                f"Selected asset '{asset['name']}' does not match truck in orders ({truck_number_norm})."
+            )
+    return {
+        "files": order_files,
+        "asset": asset,
+        "warehouse": warehouse,
+        "stop_order": stop_order,
+        "tf": tf,
+        "tt": tt,
+        "orders": orders,
+    }
+
+
+def _orders_summary(orders, warehouse):
+    return {
+        "delivery_points": len(orders),
+        "tonnage": round(float(orders["TONNAGE"].sum()), 2),
+        "amount": round(float(orders["AMOUNT"].sum()), 2),
+        "warehouse": warehouse,
+    }
+
+
+@app.route("/api/logistics/plan-preview", methods=["POST"])
+@login_required
+def api_plan_preview():
+    """Schedule of an upload before it is dispatched; nothing is sent to Wialon."""
+    try:
+        d = _dispatch_inputs()
+        wh = common.WAREHOUSES[d["warehouse"]]
+        ordered = optimized_orders.order_stops(d["orders"], wh["lat"], wh["lon"], d["stop_order"])
+        plan = logistics.build_plan(
+            optimized_orders.stops_from_df(ordered), {"name": d["warehouse"], **wh}, d["tf"], d["tt"]
+        )
+        return jsonify(
+            {
+                "error": 0,
+                "plan": plan,
+                "summary": _orders_summary(d["orders"], d["warehouse"]),
+                "asset": {"item_id": d["asset"]["item_id"], "name": d["asset"]["name"]},
+                "tz": logistics.TZ_S,
+            }
+        )
+    except BadDispatch as exc:
         return jsonify({"error": 1, "message": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"error": 1, "message": str(exc)}), 500
+
+
+@app.route("/api/optimized/dispatch", methods=["POST"])
+@login_required
+def api_optimized_dispatch():
+    try:
+        d = _dispatch_inputs()
+    except BadDispatch as exc:
+        return jsonify({"error": 1, "message": str(exc)}), 400
+    except Exception as exc:
+        return jsonify({"error": 1, "message": str(exc)}), 400
+    asset, warehouse_choice, tf, tt = d["asset"], d["warehouse"], d["tf"], d["tt"]
+    gdf_joined, order_files = d["orders"], d["files"]
 
     try:
-        gdf_joined, truck_number_norm = optimized_orders.process_multiple_excels(
-            order_files
-        )
-        if gdf_joined is None or gdf_joined.empty:
-            return jsonify(
-                {
-                    "error": 1,
-                    "message": "No delivery rows with valid coordinates were found.",
-                }
-            ), 400
-
-        if truck_number_norm and asset["normalized_name"] != truck_number_norm:
-            if truck_number_norm not in asset["normalized_name"]:
-                return jsonify(
-                    {
-                        "error": 1,
-                        "message": (
-                            f"Selected asset '{asset['name']}' does not match truck "
-                            f"in orders ({truck_number_norm})."
-                        ),
-                    }
-                ), 400
-
         result = optimized_orders.send_orders_and_create_route(
             config.WIALON_TOKEN,
             config.WIALON_RESOURCE_ID,
@@ -223,17 +267,14 @@ def api_optimized_dispatch():
             tf,
             tt,
             warehouse_choice,
+            stop_order=d["stop_order"],
         )
         route_uid = result.pop("route_uid", None)
         route_name = result.pop("route_name", None)
         ordered_stops = result.pop("ordered_stops", None)
         if result.get("error") == 0:
-            result["summary"] = {
-                "delivery_points": len(gdf_joined),
-                "tonnage": round(float(gdf_joined["TONNAGE"].sum()), 2),
-                "amount": round(float(gdf_joined["AMOUNT"].sum()), 2),
-                "warehouse": warehouse_choice,
-            }
+            result["summary"] = _orders_summary(gdf_joined, warehouse_choice)
+            result["trip_day"] = logistics.local_day(tf)
             result["trip_id"], result["trip_warning"] = _record_trip(
                 route_uid, route_name, asset, warehouse_choice, ordered_stops, tf, tt, order_files
             )

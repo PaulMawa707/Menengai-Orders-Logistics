@@ -92,10 +92,9 @@ async function submitDispatchForm(form, endpoint, ordersFileList) {
         html += `<br>⚠️ ${warning}`;
       }
       setAlert(alertEl, html, 'ok');
-      const routeDay = (form.querySelector('.route-from')?.value || '').slice(0, 10);
       alertEl?.querySelector('[data-trip-id]')?.addEventListener('click', (e) => {
         e.preventDefault();
-        window.menengaiTrips?.openTrip(data.trip_id, routeDay || null);
+        window.menengaiTrips?.openTrip(data.trip_id, data.trip_day || null);
       });
       showToast('Route created successfully', true);
     } else {
@@ -110,15 +109,15 @@ async function submitDispatchForm(form, endpoint, ordersFileList) {
   }
 }
 
-function initOrdersFileList() {
-  const input = document.getElementById('orders-input');
-  const chooseBtn = document.getElementById('orders-choose-btn');
-  const listEl = document.getElementById('orders-file-list');
-  const hintEl = document.getElementById('orders-hint');
+function initOrdersFileList(prefix = '') {
+  const input = document.getElementById(`${prefix}orders-input`);
+  const chooseBtn = document.getElementById(`${prefix}orders-choose-btn`);
+  const listEl = document.getElementById(`${prefix}orders-file-list`);
+  const hintEl = document.getElementById(`${prefix}orders-hint`);
   if (!input || !chooseBtn || !listEl) return;
 
   let managedFiles = [];
-  let onFilesChanged = null;
+  const listeners = [];
 
   function notifyFilesChanged() {
     if (hintEl) {
@@ -127,9 +126,7 @@ function initOrdersFileList() {
         : 'No files chosen';
     }
     listEl.classList.toggle('hidden', managedFiles.length === 0);
-    if (typeof onFilesChanged === 'function') {
-      onFilesChanged();
-    }
+    listeners.forEach((callback) => callback());
   }
 
   function renderList() {
@@ -179,18 +176,24 @@ function initOrdersFileList() {
   return {
     getFiles: () => managedFiles,
     onChange(callback) {
-      onFilesChanged = callback;
+      listeners.push(callback);
+    },
+    clear() {
+      managedFiles = [];
+      renderList();
+      notifyFilesChanged();
     },
   };
 }
 
-function initAssetPicker(ordersFileList) {
-  const searchInput = document.getElementById('asset-search');
-  const hiddenInput = document.getElementById('asset-item-id');
-  const listEl = document.getElementById('asset-suggestions');
-  const selectedLabel = document.getElementById('asset-selected-label');
-  const ordersSummary = document.getElementById('orders-summary');
+function initAssetPicker(ordersFileList, prefix = '') {
+  const searchInput = document.getElementById(`${prefix}asset-search`);
+  const hiddenInput = document.getElementById(`${prefix}asset-item-id`);
+  const listEl = document.getElementById(`${prefix}asset-suggestions`);
+  const selectedLabel = document.getElementById(`${prefix}asset-selected-label`);
+  const ordersSummary = document.getElementById(`${prefix}orders-summary`);
   if (!searchInput || !hiddenInput || !listEl) return;
+  let onSelected = null;
 
   let assets = [];
   let activeIndex = -1;
@@ -202,6 +205,7 @@ function initAssetPicker(ordersFileList) {
       searchInput.value = '';
       selectedLabel.textContent = '';
       selectedLabel.classList.add('hidden');
+      onSelected?.();
       return;
     }
     hiddenInput.value = String(asset.item_id);
@@ -209,6 +213,7 @@ function initAssetPicker(ordersFileList) {
     selectedLabel.textContent = `Selected: ${asset.name}`;
     selectedLabel.classList.remove('hidden');
     hideSuggestions();
+    onSelected?.();
   }
 
   function hideSuggestions() {
@@ -348,6 +353,13 @@ function initAssetPicker(ordersFileList) {
   }
 
   ordersFileList?.onChange(suggestAssetFromOrders);
+
+  return {
+    onChange(callback) {
+      onSelected = callback;
+    },
+    clear: () => setSelected(null),
+  };
 }
 
 document.addEventListener('DOMContentLoaded', () => {

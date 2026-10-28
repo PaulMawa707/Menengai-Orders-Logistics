@@ -230,8 +230,47 @@ def _extract_wialon_error(result):
     return None
 
 
+STOP_ORDERS = ("warehouse", "nearest")
+
+
+def order_stops(df_grouped, wh_lat, wh_lon, mode="warehouse"):
+    """Stops in driving order: closest to the warehouse first, or each next stop the nearest to the previous one."""
+    wh = {"y": wh_lat, "x": wh_lon}
+    df = df_grouped.copy()
+    df["Distance_From_Warehouse"] = df.apply(
+        lambda row: _calc_dist(wh, {"y": row["LAT"], "x": row["LONG"]}), axis=1
+    )
+    df = df.sort_values("Distance_From_Warehouse", ascending=True).reset_index(drop=True)
+    if mode != "nearest" or len(df) < 2:
+        return df
+    left = list(range(len(df)))
+    order = []
+    cur = wh
+    while left:
+        best = min(left, key=lambda i: _calc_dist(cur, {"y": df.at[i, "LAT"], "x": df.at[i, "LONG"]}))
+        order.append(best)
+        left.remove(best)
+        cur = {"y": df.at[best, "LAT"], "x": df.at[best, "LONG"]}
+    return df.iloc[order].reset_index(drop=True)
+
+
+def stops_from_df(df):
+    return [
+        {
+            "name": _text(row.get("CUSTOMER NAME")),
+            "location": _text(row.get("LOCATION")),
+            "lat": float(row["LAT"]),
+            "lon": float(row["LONG"]),
+            "weightKg": _number(row.get("TONNAGE")) * 1000,
+            "amount": _number(row.get("AMOUNT")),
+            "invoice": _text(row.get("INVOICE NO")),
+        }
+        for _, row in df.iterrows()
+    ]
+
+
 def send_orders_and_create_route(
-    token, resource_id, unit_id, vehicle_name, df_grouped, tf, tt, warehouse_choice
+    token, resource_id, unit_id, vehicle_name, df_grouped, tf, tt, warehouse_choice, stop_order="warehouse"
 ):
     """Nearest-first route creation (TakaTaka optimized orders pattern)."""
     if warehouse_choice not in WAREHOUSES:
@@ -259,17 +298,7 @@ def send_orders_and_create_route(
         wh_name = warehouse_choice
         wh_coords = f"{wh_lat}, {wh_lon}"
 
-        df_grouped = df_grouped.copy()
-        df_grouped["Distance_From_Warehouse"] = df_grouped.apply(
-            lambda row: _calc_dist(
-                {"y": wh_lat, "x": wh_lon},
-                {"y": row["LAT"], "x": row["LONG"]},
-            ),
-            axis=1,
-        )
-        df_grouped = df_grouped.sort_values(
-            "Distance_From_Warehouse", ascending=True
-        ).reset_index(drop=True)
+        df_grouped = order_stops(df_grouped, wh_lat, wh_lon, stop_order)
 
         orders = []
         for idx, row in df_grouped.iterrows():
@@ -627,18 +656,7 @@ def send_orders_and_create_route(
                 "route_result": route_result,
                 "route_uid": route_id,
                 "route_name": route_name,
-                "ordered_stops": [
-                    {
-                        "name": _text(row.get("CUSTOMER NAME")),
-                        "location": _text(row.get("LOCATION")),
-                        "lat": float(row["LAT"]),
-                        "lon": float(row["LONG"]),
-                        "weightKg": _number(row.get("TONNAGE")) * 1000,
-                        "amount": _number(row.get("AMOUNT")),
-                        "invoice": _text(row.get("INVOICE NO")),
-                    }
-                    for _, row in df_grouped.iterrows()
-                ],
+                "ordered_stops": stops_from_df(df_grouped),
             }
 
         return {"error": 1, "message": f"Unexpected or error response: {route_result}"}

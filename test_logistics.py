@@ -216,6 +216,67 @@ class AppTests(unittest.TestCase):
         self.assertEqual(kwargs["route_uid"], 1793000000)
         self.assertEqual(kwargs["unit_id"], 27532302)
         self.assertEqual(kwargs["files"], "KDE 143E.xlsx")
+        self.assertEqual(body["trip_day"], "2026-10-29")
+
+    def test_plan_preview_builds_the_schedule_without_dispatching(self):
+        import app as app_module
+        import pandas as pd
+        from io import BytesIO
+
+        df = pd.DataFrame([
+            {"CUSTOMER NAME": "Far", "LOCATION": "", "LAT": -0.40, "LONG": 36.20, "TONNAGE": 1, "AMOUNT": 10},
+            {"CUSTOMER NAME": "Near", "LOCATION": "", "LAT": -0.29, "LONG": 36.05, "TONNAGE": 2, "AMOUNT": 20},
+        ])
+        with patch.object(app_module.optimized_orders, "process_multiple_excels", return_value=(df, "KDE143E")), \
+             patch.object(app_module.optimized_orders, "send_orders_and_create_route") as send, \
+             patch("services.logistics.plan._road_legs", side_effect=RuntimeError("offline")):
+            r = self.client.post(
+                "/api/logistics/plan-preview",
+                data={
+                    "orders": (BytesIO(b"x"), "KDE 143E.xlsx"),
+                    "asset_item_id": "27532302",
+                    "warehouse": "MORL",
+                    "stop_order": "warehouse",
+                    "route_from": "2026-10-29T06:00",
+                    "route_end": "2026-10-29T18:00",
+                },
+                content_type="multipart/form-data",
+            )
+        body = r.get_json()
+        self.assertEqual(r.status_code, 200, body)
+        send.assert_not_called()
+        self.assertEqual([s["name"] for s in body["plan"]["stops"]], ["Near", "Far"])
+        self.assertEqual(body["plan"]["depot"]["name"], "MORL")
+        self.assertEqual(body["summary"]["delivery_points"], 2)
+        self.assertGreater(body["plan"]["stops"][1]["eta"], body["plan"]["stops"][0]["eta"])
+
+    def test_plan_preview_rejects_unknown_stop_order(self):
+        from io import BytesIO
+
+        r = self.client.post(
+            "/api/logistics/plan-preview",
+            data={"orders": (BytesIO(b"x"), "a.xlsx"), "asset_item_id": "27532302", "warehouse": "MORL",
+                  "stop_order": "random", "route_from": "2026-10-29T06:00", "route_end": "2026-10-29T18:00"},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(r.status_code, 400)
+
+
+class StopOrderTests(unittest.TestCase):
+    def test_nearest_next_stop_chains_from_the_warehouse(self):
+        import pandas as pd
+        from wialon_core import order_stops
+
+        # A line going east from the warehouse, plus one stop close to the warehouse on the far side.
+        df = pd.DataFrame([
+            {"CUSTOMER NAME": "East 2", "LAT": 0.0, "LONG": 0.20},
+            {"CUSTOMER NAME": "West", "LAT": 0.0, "LONG": -0.11},
+            {"CUSTOMER NAME": "East 1", "LAT": 0.0, "LONG": 0.10},
+        ])
+        by_warehouse = order_stops(df, 0.0, 0.0, "warehouse")["CUSTOMER NAME"].tolist()
+        nearest = order_stops(df, 0.0, 0.0, "nearest")["CUSTOMER NAME"].tolist()
+        self.assertEqual(by_warehouse, ["East 1", "West", "East 2"])
+        self.assertEqual(nearest, ["East 1", "East 2", "West"])
 
 
 if __name__ == "__main__":

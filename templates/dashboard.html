@@ -25,19 +25,51 @@
     </div>
   </header>
 
-  <main class="main-content" id="main-content">
+  <main class="main-content wide" id="main-content">
+    <div class="panel-header">
+      <h2>Logistics</h2>
+      <p>Upload orders, plan and dispatch trips to Wialon, then follow them stop by stop from live Wialon positions.</p>
+    </div>
+
     <nav class="tabs" role="tablist">
-      <button type="button" class="tab active" data-tab="dispatch" role="tab" aria-selected="true">📦 Upload &amp; Dispatch</button>
-      <button type="button" class="tab" data-tab="trips" role="tab" aria-selected="false">🚚 Trips</button>
+      <button type="button" class="tab active" data-tab="trips" role="tab" aria-selected="true">🚚 Trips</button>
+      <button type="button" class="tab" data-tab="import" role="tab" aria-selected="false">📄 Import from Excel</button>
     </nav>
 
-    <section class="panel active" data-panel="dispatch">
-      <div class="panel-header">
-        <h2>📦 Optimized Orders Uploader</h2>
-        <p>Upload Excel orders, select an asset, and dispatch nearest-first optimized routes to Wialon.</p>
+    <section class="panel active" data-panel="trips">
+      <div id="trips-storage-alert" class="result-alert err hidden">
+        The app database is not connected, so trips cannot be listed. Set <code>SUPABASE_URL</code> and <code>SUPABASE_SECRET_KEY</code>.
       </div>
 
+      <div class="trips-toolbar">
+        <label class="inline-field"><span>From</span><input type="date" id="trips-from" /></label>
+        <label class="inline-field"><span>To</span><input type="date" id="trips-to" /></label>
+        <button type="button" class="btn-primary btn-sm" id="trips-run">▶ Run</button>
+        <span id="trips-range-error" class="range-error"></span>
+        <input type="search" id="trips-search" class="trips-search" placeholder="Search route or vehicle" />
+        <span class="toolbar-end">
+          <a class="btn-ghost btn-sm" id="trips-export" href="#">⬇ Excel</a>
+          <button type="button" class="btn-primary btn-sm" id="plan-open">📅 Plan a trip</button>
+        </span>
+      </div>
+
+      <div class="stat-grid" id="trips-stats">
+        <button type="button" class="stat" data-state="in_progress"><span class="dot in_progress"></span><span class="stat-label">On the road</span><b class="stat-value">0</b></button>
+        <button type="button" class="stat" data-state="scheduled"><span class="dot scheduled"></span><span class="stat-label">Scheduled</span><b class="stat-value">0</b></button>
+        <button type="button" class="stat" data-state="completed"><span class="dot completed"></span><span class="stat-label">Completed</span><b class="stat-value">0</b></button>
+        <button type="button" class="stat" data-state="ended"><span class="dot ended"></span><span class="stat-label">Ended with missed stops</span><b class="stat-value">0</b></button>
+      </div>
+
+      <div class="card trips-card">
+        <div id="trips-body"></div>
+        <div class="pager" id="trips-pager"></div>
+      </div>
+      <p class="data-meta" id="trips-meta"></p>
+    </section>
+
+    <section class="panel" data-panel="import" hidden>
       <form id="optimized-form" class="dispatch-form" enctype="multipart/form-data">
+        <p class="form-intro">Upload Excel orders, select an asset, and dispatch the route straight to Wialon. Use <b>Plan a trip</b> on the Trips tab to preview the schedule first.</p>
         <div class="form-grid">
           <label class="field field-full">
             <span>Orders Excel file(s)</span>
@@ -52,15 +84,8 @@
           <label class="field field-full asset-picker">
             <span>Asset / Truck</span>
             <div class="asset-picker-wrap">
-              <input
-                type="text"
-                id="asset-search"
-                placeholder="Search by plate or name…"
-                autocomplete="off"
-                aria-autocomplete="list"
-                aria-controls="asset-suggestions"
-                aria-expanded="false"
-              />
+              <input type="text" id="asset-search" placeholder="Search by plate or name…" autocomplete="off"
+                aria-autocomplete="list" aria-controls="asset-suggestions" aria-expanded="false" />
               <input type="hidden" name="asset_item_id" id="asset-item-id" required />
               <ul id="asset-suggestions" class="asset-suggestions hidden" role="listbox"></ul>
             </div>
@@ -82,44 +107,19 @@
               {% endfor %}
             </select>
           </label>
+          <label class="field">
+            <span>Stop order</span>
+            <select name="stop_order">
+              <option value="warehouse" selected>Closest to the warehouse first</option>
+              <option value="nearest">Nearest next stop</option>
+            </select>
+          </label>
         </div>
         <div class="form-actions">
           <button type="submit" class="btn-primary">Upload and Dispatch</button>
         </div>
         <div class="result-alert hidden"></div>
       </form>
-    </section>
-
-    <section class="panel" data-panel="trips" hidden>
-      <div class="panel-header">
-        <h2>🚚 Trips</h2>
-        <p>Uploaded routes and finished Wialon Logistics routes, with stop-by-stop progress from live Wialon positions.</p>
-      </div>
-      <div id="trips-storage-alert" class="result-alert err hidden">
-        The app database is not connected, so trips cannot be listed. Set <code>SUPABASE_URL</code> and <code>SUPABASE_SECRET_KEY</code>.
-      </div>
-
-      <div class="trips-toolbar">
-        <label class="inline-field"><span>From</span><input type="date" id="trips-from" /></label>
-        <label class="inline-field"><span>To</span><input type="date" id="trips-to" /></label>
-        <button type="button" class="btn-primary btn-sm" id="trips-run">Run</button>
-        <span id="trips-range-error" class="range-error"></span>
-        <input type="search" id="trips-search" class="trips-search" placeholder="Search route or vehicle" />
-        <a class="btn-ghost btn-sm trips-export" id="trips-export" href="#">⬇ Export Excel</a>
-      </div>
-
-      <div class="stat-grid" id="trips-stats">
-        <button type="button" class="stat" data-state="in_progress"><span class="dot in_progress"></span><span class="stat-label">On the road</span><b class="stat-value">0</b></button>
-        <button type="button" class="stat" data-state="scheduled"><span class="dot scheduled"></span><span class="stat-label">Scheduled</span><b class="stat-value">0</b></button>
-        <button type="button" class="stat" data-state="completed"><span class="dot completed"></span><span class="stat-label">Completed</span><b class="stat-value">0</b></button>
-        <button type="button" class="stat" data-state="ended"><span class="dot ended"></span><span class="stat-label">Ended with missed stops</span><b class="stat-value">0</b></button>
-      </div>
-
-      <div class="card trips-card">
-        <div id="trips-body"></div>
-        <div class="pager" id="trips-pager"></div>
-      </div>
-      <p class="data-meta" id="trips-meta"></p>
     </section>
   </main>
 
@@ -133,6 +133,77 @@
       <button type="button" class="drawer-close" id="trip-close" aria-label="Close">×</button>
     </header>
     <div class="drawer-body" id="trip-body"></div>
+  </aside>
+
+  <div class="drawer-backdrop hidden" id="plan-drawer-backdrop"></div>
+  <aside class="drawer hidden" id="plan-drawer" aria-hidden="true">
+    <header class="drawer-head">
+      <div class="drawer-title">
+        <h3>Plan a trip</h3>
+        <p>Upload the orders, preview the schedule, then dispatch it to Wialon; progress is followed from Wialon positions.</p>
+      </div>
+      <button type="button" class="drawer-close" id="plan-close" aria-label="Close">×</button>
+    </header>
+    <div class="drawer-body">
+      <form id="plan-form" class="card plan-card" enctype="multipart/form-data">
+        <div class="form-grid">
+          <label class="field field-full">
+            <span>Orders Excel file(s)</span>
+            <div class="file-upload-wrap">
+              <input type="file" id="plan-orders-input" name="orders" accept=".xls,.xlsx" multiple class="file-input-hidden" />
+              <button type="button" class="btn-file-choose" id="plan-orders-choose-btn">Choose files</button>
+              <span class="file-upload-hint" id="plan-orders-hint">No files chosen</span>
+            </div>
+            <ul id="plan-orders-file-list" class="file-chip-list hidden" aria-live="polite"></ul>
+            <small id="plan-orders-summary" class="field-hint hidden" aria-live="polite"></small>
+          </label>
+          <label class="field field-full asset-picker">
+            <span>Vehicle</span>
+            <div class="asset-picker-wrap">
+              <input type="text" id="plan-asset-search" placeholder="Search by plate or name…" autocomplete="off"
+                aria-autocomplete="list" aria-controls="plan-asset-suggestions" aria-expanded="false" />
+              <input type="hidden" name="asset_item_id" id="plan-asset-item-id" required />
+              <ul id="plan-asset-suggestions" class="asset-suggestions hidden" role="listbox"></ul>
+            </div>
+            <small id="plan-asset-selected-label" class="field-hint hidden"></small>
+          </label>
+          <label class="field">
+            <span>Day</span>
+            <input type="date" id="plan-day" required />
+          </label>
+          <label class="field">
+            <span>Warehouse</span>
+            <select name="warehouse" id="plan-warehouse" required>
+              {% for wh in warehouses %}
+              <option value="{{ wh }}" {% if wh == 'MORL' %}selected{% endif %}>{{ wh }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="field">
+            <span>Window starts</span>
+            <input type="time" id="plan-from" value="06:00" required />
+          </label>
+          <label class="field">
+            <span>Window ends</span>
+            <input type="time" id="plan-to" value="18:00" required />
+          </label>
+          <label class="field field-full">
+            <span>Stop order</span>
+            <select name="stop_order" id="plan-order">
+              <option value="warehouse" selected>Closest to the warehouse first</option>
+              <option value="nearest">Nearest next stop</option>
+            </select>
+          </label>
+        </div>
+        <p class="field-hint plan-hint">Travel times by road routing plus 15 min at each stop. A window ending before it starts runs into the next day.</p>
+        <div class="result-alert hidden" id="plan-alert"></div>
+        <div class="form-actions plan-actions">
+          <button type="button" class="btn-ghost" id="plan-preview">👁 Preview schedule</button>
+          <button type="button" class="btn-primary" id="plan-dispatch" disabled>📅 Dispatch trip to Wialon</button>
+        </div>
+      </form>
+      <div id="plan-result"></div>
+    </div>
   </aside>
 
   <footer class="footer">
