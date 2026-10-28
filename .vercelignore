@@ -10,3 +10,7 @@ kenya-counties-simplified.geojson
 .env
 .env.*
 !.env.example
+.vercel.*
+test_*.py
+db
+simonkasangah-cmoncy images-15.jpg
