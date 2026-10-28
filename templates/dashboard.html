@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{{ title }}</title>
   {% include 'includes/favicon.html' %}
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}" />
 </head>
 <body data-active-tab="optimized"{% if bg_exists %} class="has-bg"{% endif %}>
@@ -24,8 +25,13 @@
     </div>
   </header>
 
-  <main class="main-content">
-    <section class="panel active">
+  <main class="main-content" id="main-content">
+    <nav class="tabs" role="tablist">
+      <button type="button" class="tab active" data-tab="dispatch" role="tab" aria-selected="true">📦 Upload &amp; Dispatch</button>
+      <button type="button" class="tab" data-tab="trips" role="tab" aria-selected="false">🚚 Trips</button>
+    </nav>
+
+    <section class="panel active" data-panel="dispatch">
       <div class="panel-header">
         <h2>📦 Optimized Orders Uploader</h2>
         <p>Upload Excel orders, select an asset, and dispatch nearest-first optimized routes to Wialon.</p>
@@ -83,7 +89,51 @@
         <div class="result-alert hidden"></div>
       </form>
     </section>
+
+    <section class="panel" data-panel="trips" hidden>
+      <div class="panel-header">
+        <h2>🚚 Trips</h2>
+        <p>Uploaded routes and finished Wialon Logistics routes, with stop-by-stop progress from live Wialon positions.</p>
+      </div>
+      <div id="trips-storage-alert" class="result-alert err hidden">
+        The app database is not connected, so trips cannot be listed. Set <code>SUPABASE_URL</code> and <code>SUPABASE_SECRET_KEY</code>.
+      </div>
+
+      <div class="trips-toolbar">
+        <label class="inline-field"><span>From</span><input type="date" id="trips-from" /></label>
+        <label class="inline-field"><span>To</span><input type="date" id="trips-to" /></label>
+        <button type="button" class="btn-primary btn-sm" id="trips-run">Run</button>
+        <span id="trips-range-error" class="range-error"></span>
+        <input type="search" id="trips-search" class="trips-search" placeholder="Search route or vehicle" />
+        <a class="btn-ghost btn-sm trips-export" id="trips-export" href="#">⬇ Export Excel</a>
+      </div>
+
+      <div class="stat-grid" id="trips-stats">
+        <button type="button" class="stat" data-state="in_progress"><span class="dot in_progress"></span><span class="stat-label">On the road</span><b class="stat-value">0</b></button>
+        <button type="button" class="stat" data-state="scheduled"><span class="dot scheduled"></span><span class="stat-label">Scheduled</span><b class="stat-value">0</b></button>
+        <button type="button" class="stat" data-state="completed"><span class="dot completed"></span><span class="stat-label">Completed</span><b class="stat-value">0</b></button>
+        <button type="button" class="stat" data-state="ended"><span class="dot ended"></span><span class="stat-label">Ended with missed stops</span><b class="stat-value">0</b></button>
+      </div>
+
+      <div class="card trips-card">
+        <div id="trips-body"></div>
+        <div class="pager" id="trips-pager"></div>
+      </div>
+      <p class="data-meta" id="trips-meta"></p>
+    </section>
   </main>
+
+  <div class="drawer-backdrop hidden" id="trip-drawer-backdrop"></div>
+  <aside class="drawer hidden" id="trip-drawer" aria-hidden="true">
+    <header class="drawer-head">
+      <div class="drawer-title">
+        <h3 id="trip-title">Trip</h3>
+        <p id="trip-subtitle"></p>
+      </div>
+      <button type="button" class="drawer-close" id="trip-close" aria-label="Close">×</button>
+    </header>
+    <div class="drawer-body" id="trip-body"></div>
+  </aside>
 
   <footer class="footer">
     {% if ct_logo_exists %}
@@ -92,6 +142,8 @@
     <span>Powered by <a href="{{ controltech_url }}" target="_blank" rel="noopener">ControlTech</a></span>
   </footer>
 
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/trips.js') }}"></script>
 </body>
 </html>

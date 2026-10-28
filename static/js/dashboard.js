@@ -85,7 +85,18 @@ async function submitDispatchForm(form, endpoint, ordersFileList) {
       if (data.planning_url) {
         html += `<br><a href="${data.planning_url}" target="_blank" rel="noopener">Open Wialon Logistics</a>`;
       }
+      if (data.trip_id) {
+        html += ` · <a href="#trips" data-trip-id="${data.trip_id}">View trip on the dashboard</a>`;
+      } else if (data.trip_warning) {
+        const warning = String(data.trip_warning).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+        html += `<br>⚠️ ${warning}`;
+      }
       setAlert(alertEl, html, 'ok');
+      const routeDay = (form.querySelector('.route-from')?.value || '').slice(0, 10);
+      alertEl?.querySelector('[data-trip-id]')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        window.menengaiTrips?.openTrip(data.trip_id, routeDay || null);
+      });
       showToast('Route created successfully', true);
     } else {
       setAlert(alertEl, `❌ ${data.message || 'Unknown error'}`, 'err');

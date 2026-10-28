@@ -195,6 +195,41 @@ def _osrm_polyline(prev_coords, coords):
     return None
 
 
+def _text(value) -> str:
+    return "" if value is None or pd.isna(value) else str(value).strip()
+
+
+def _number(value) -> float:
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return 0.0 if pd.isna(n) else n
+
+
+def _unique_id_base(now=None) -> int:
+    stamp = int(now if now is not None else time.time())
+    return stamp if stamp > 0 else 1
+
+
+def _extract_wialon_error(result):
+    if isinstance(result, dict) and result.get("error", 0) != 0:
+        return result.get("error", 1), result.get(
+            "reason", result.get("message", str(result))
+        )
+    if isinstance(result, list):
+        for item in result:
+            if isinstance(item, dict) and item.get("error", 0) != 0:
+                return item.get("error", 1), item.get(
+                    "reason", item.get("message", str(item))
+                )
+            if isinstance(item, list):
+                nested = _extract_wialon_error(item)
+                if nested:
+                    return nested
+    return None
+
+
 def send_orders_and_create_route(
     token, resource_id, unit_id, vehicle_name, df_grouped, tf, tt, warehouse_choice
 ):
@@ -347,14 +382,14 @@ def send_orders_and_create_route(
 
         route_orders = []
         current_time = int(time.time())
-        route_id = current_time
+        route_id = _unique_id_base(current_time)
+        order_id_base = route_id
         last_visit_time = int(tf)
         sequence_index = 0
 
         route_orders.append(
             {
-                "uid": int(unit_id),
-                "id": 0,
+                "id": order_id_base,
                 "n": wh_name,
                 "p": {
                     "ut": 0,
@@ -399,8 +434,7 @@ def send_orders_and_create_route(
 
         prev_coords = {"y": wh_lat, "x": wh_lon}
 
-        for idx, cust_row in df_grouped.iterrows():
-            order_id = idx + 1
+        for _, cust_row in df_grouped.iterrows():
             order_name = cust_row["CUSTOMER NAME"]
             coords = {"y": float(cust_row["LAT"]), "x": float(cust_row["LONG"])}
 
@@ -415,8 +449,7 @@ def send_orders_and_create_route(
             sequence_index += 1
             route_orders.append(
                 {
-                    "uid": int(unit_id),
-                    "id": order_id,
+                    "id": order_id_base + sequence_index,
                     "n": order_name,
                     "p": {
                         "ut": 180,
@@ -466,15 +499,14 @@ def send_orders_and_create_route(
         mileage_back = int(
             _calc_dist(prev_coords, {"y": wh_lat, "x": wh_lon}) * 1000
         )
-        final_id = max([o.get("id", 0) for o in route_orders]) + 1
         sequence_index += 1
+        final_id = order_id_base + sequence_index
 
         if not end_warehouse_rp:
             end_warehouse_rp = _osrm_polyline(prev_coords, {"y": wh_lat, "x": wh_lon})
 
         route_orders.append(
             {
-                "uid": int(unit_id),
                 "id": final_id,
                 "n": wh_name,
                 "p": {
@@ -526,6 +558,7 @@ def send_orders_and_create_route(
         total_weight = sum(
             int(order["p"]["w"]) for order in route_orders if order["f"] == 0
         )
+        route_name = f"{vehicle_name} - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
 
         batch_payload = {
             "svc": "core/batch",
@@ -541,7 +574,7 @@ def send_orders_and_create_route(
                                 "callMode": "create",
                                 "exp": 0,
                                 "f": 0,
-                                "n": f"{vehicle_name} - {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+                                "n": route_name,
                                 "summary": {
                                     "countOrders": len(route_orders),
                                     "duration": (
@@ -571,59 +604,41 @@ def send_orders_and_create_route(
             f"https://apps.wialon.com/logistics/?lang=en&sid={session_id}#/distrib/step3"
         )
 
-        if isinstance(route_result, list):
-            error_item = next(
-                (
-                    item
-                    for item in route_result
-                    if isinstance(item, dict) and item.get("error", 0) != 0
-                ),
-                None,
-            )
-            created_orders = next(
-                (
-                    item.get("orders")
-                    for item in route_result
-                    if isinstance(item, dict)
-                    and isinstance(item.get("orders"), list)
-                    and item["orders"]
-                ),
-                None,
-            )
-            if error_item is None and created_orders:
-                return {
-                    "error": 0,
-                    "message": "Route created successfully",
-                    "planning_url": planning_url,
-                    "optimize_result": optimize_result,
-                    "route_result": route_result,
-                }
-            if error_item is None:
-                return {
-                    "error": 1,
-                    "message": (
-                        "Wialon did not confirm route creation. "
-                        f"Response: {route_result}"
-                    ),
-                }
-            return {
-                "error": error_item.get("error", 1),
-                "message": error_item.get(
-                    "reason", f"Wialon route creation failed: {error_item}"
-                ),
-            }
+        wialon_error = _extract_wialon_error(route_result)
+        if wialon_error:
+            error_code, error_message = wialon_error
+            return {"error": error_code, "message": error_message}
 
-        if (
-            isinstance(route_result, dict)
-            and isinstance(route_result.get("orders"), list)
-            and route_result["orders"]
-        ):
+        created_orders = None
+        if isinstance(route_result, dict) and isinstance(route_result.get("orders"), list):
+            created_orders = route_result["orders"]
+        elif isinstance(route_result, list):
+            for item in route_result:
+                if isinstance(item, dict) and isinstance(item.get("orders"), list) and item["orders"]:
+                    created_orders = item["orders"]
+                    break
+
+        if created_orders:
             return {
                 "error": 0,
                 "message": "Route created successfully",
                 "planning_url": planning_url,
                 "optimize_result": optimize_result,
                 "route_result": route_result,
+                "route_uid": route_id,
+                "route_name": route_name,
+                "ordered_stops": [
+                    {
+                        "name": _text(row.get("CUSTOMER NAME")),
+                        "location": _text(row.get("LOCATION")),
+                        "lat": float(row["LAT"]),
+                        "lon": float(row["LONG"]),
+                        "weightKg": _number(row.get("TONNAGE")) * 1000,
+                        "amount": _number(row.get("AMOUNT")),
+                        "invoice": _text(row.get("INVOICE NO")),
+                    }
+                    for _, row in df_grouped.iterrows()
+                ],
             }
 
         return {"error": 1, "message": f"Unexpected or error response: {route_result}"}
