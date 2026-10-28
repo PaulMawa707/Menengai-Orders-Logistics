@@ -151,6 +151,48 @@ def insert_missing(rows):
         )
 
 
+def _same_trip(have, row) -> bool:
+    plan, new = have.get("plan") or {}, row["plan"]
+    return (
+        int(have["unit_id"]) == row["unit_id"]
+        and have["route_name"] == row["route_name"]
+        and unix(have["window_from"]) == unix(row["window_from"])
+        and unix(have["window_to"]) == unix(row["window_to"])
+        and plan.get("km") == new.get("km")
+        and [(s.get("name"), s.get("eta")) for s in plan.get("stops", [])] == [(s["name"], s["eta"]) for s in new["stops"]]
+    )
+
+
+def refresh_unfinished(rows):
+    """Brings trips read from Wialon up to date while they have no final result (running routes can still be edited
+    there). Uploads keep the plan made by this app."""
+    for i in range(0, len(rows), 50):
+        part = {r["source_key"]: r for r in rows[i : i + 50]}
+        keys = ",".join(f'"{k}"' for k in part)
+        have = _request(
+            "GET",
+            params=[
+                ("select", "id,source_key,unit_id,route_name,window_from,window_to,plan"),
+                ("source_key", f"in.({keys})"),
+                ("source", "eq.wialon"),
+                ("result", "is.null"),
+                ("removed_at", "is.null"),
+            ],
+            what="Loading trips from Wialon",
+        ).json()
+        for h in have:
+            row = part.get(h["source_key"])
+            if not row or _same_trip(h, row):
+                continue
+            _request(
+                "PATCH",
+                params={"id": f"eq.{h['id']}"},
+                json={k: row[k] for k in ("unit_id", "unit_name", "route_name", "warehouse", "day", "window_from", "window_to", "plan")},
+                headers={"Prefer": "return=minimal"},
+                what="Updating a trip from Wialon",
+            )
+
+
 def save_result(trip_id: str, result: dict):
     try:
         _request(

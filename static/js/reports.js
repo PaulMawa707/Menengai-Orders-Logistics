@@ -304,7 +304,7 @@ function initReports({ openTrip }) {
               'In time · late · not',
               'right',
             )}${th('start', 'Start est. / actual', 'center')}${th('return', 'Return est. / actual', 'center')}${th('duration', 'Duration est. / actual', 'right')}${th('km', 'km est. / actual', 'right')}${th('state', 'State')}<th></th></tr></thead><tbody>${body}</tbody></table></div>`
-          : `<div class="empty"><b>No trips match</b><p>${d.trips.length ? 'Try another orders filter or clear the search.' : 'No trips for these days. Dispatched uploads and finished Wialon Logistics routes appear here.'}</p></div>`
+          : `<div class="empty"><b>No trips match</b><p>${d.trips.length ? 'Try another orders filter or clear the search.' : 'No trips for these days. Dispatched uploads and Wialon Logistics routes appear here.'}</p></div>`
       }</div>
       <p class="data-meta">Visited in time: the vehicle reached the order no later than its ETA plus the allowed lateness. Not visited: it never came within the stop radius during the trip window. Actual times and mileage come from Wialon positions. Loaded in ${fmtNum(d.ms)} ms.</p>`;
 

@@ -204,7 +204,8 @@ def _unit_names(token, unit_ids):
 
 
 def sync_wialon_history(token, resource_id, day_from, day_to, now=None):
-    """Keeps finished Wialon Logistics routes of the period as trips (read-only on Wialon)."""
+    """Keeps the Wialon Logistics routes of the period as trips: finished ones from history, and the ones still
+    running (on the road, or left open with orders not visited). Read-only on Wialon."""
     now = int(now or time.time())
     key = (int(resource_id), day_from, day_to)
     with _sync_lock:
@@ -212,18 +213,33 @@ def sync_wialon_history(token, resource_id, day_from, day_to, now=None):
             return
     ival_from = day_start(day_from) - BEFORE_S
     ival_to = min(day_start(day_to) + 86400 + AFTER_S, now + 86400)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        finished = pool.submit(wialon.finished_routes, token, resource_id, ival_from, ival_to)
+        running = pool.submit(wialon.active_routes, token, resource_id, day_start(day_from), day_start(day_to) + 86400)
+        routes, orders, ok = [], [], 0
+        for name, fut in (("history", finished), ("running routes", running)):
+            try:
+                r, o = fut.result()
+                routes.extend(r)
+                orders.extend(o)
+                ok += 1
+            except Exception as exc:
+                print(f"[logistics] could not read {name} from Wialon Logistics: {exc}")
+    if not ok:
+        return
     try:
-        routes, orders = wialon.finished_routes(token, resource_id, ival_from, ival_to)
         unit_ids = {int((r.get("st") or {}).get("u") or 0) for r in routes} | {int(o.get("u") or 0) for o in orders}
         unit_ids.discard(0)
         rows = wialon_trip_rows(resource_id, routes, orders, day_from, day_to, _unit_names(token, unit_ids))
         store.insert_missing(rows)
-        with _sync_lock:
-            if len(_synced) > 200:
-                _synced.clear()
-            _synced[key] = time.time()
+        store.refresh_unfinished(rows)
+        if ok == 2:
+            with _sync_lock:
+                if len(_synced) > 200:
+                    _synced.clear()
+                _synced[key] = time.time()
     except Exception as exc:
-        print(f"[logistics] could not read routes from Wialon Logistics: {exc}")
+        print(f"[logistics] could not keep routes from Wialon Logistics: {exc}")
 
 
 # ---- Tracking and summaries ----

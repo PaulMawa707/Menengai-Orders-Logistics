@@ -135,6 +135,29 @@ def finished_routes(token, resource_id, ival_from, ival_to):
     return _with_session(token, run)
 
 
+LOGISTICS_ROUTES_URL = "https://logistics.wialon.com/api/routes"
+
+
+def active_routes(token, resource_id, t_from, t_to):
+    """Routes running in Wialon Logistics in a period (on the road, or left open with orders not visited), with their orders.
+
+    The whole resource's active orders are far too large to load through the remote API; this Logistics service
+    returns only the routes of the period.
+    """
+    res = requests.get(
+        LOGISTICS_ROUTES_URL,
+        params={"resourceId": int(resource_id), "token": token, "from": int(t_from), "to": int(t_to)},
+        timeout=120,
+    )
+    res.raise_for_status()
+    data = res.json()
+    if isinstance(data, dict) and data.get("error"):
+        raise WialonError("logistics/api/routes", data["error"], data.get("detail", ""))
+    routes = _as_list(data.get("routes") if isinstance(data, dict) else data)
+    orders = [o for r in routes for o in _as_list(r.get("orders"))]
+    return routes, orders
+
+
 def unit_names(token, unit_ids):
     ids = sorted({int(u) for u in unit_ids if u})
     if not ids:

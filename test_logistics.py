@@ -124,6 +124,70 @@ class WialonHistoryTests(unittest.TestCase):
         self.assertEqual(rows[0]["plan"]["start"], later)
         self.assertEqual(rows[0]["plan"]["end"], later + 7200)
 
+    def test_sync_keeps_running_and_finished_routes(self):
+        def route(uid, unit, vt):
+            orders = [
+                {"uid": uid * 10 + 1, "n": "MORL", "f": 260, "y": DEPOT["lat"], "x": DEPOT["lon"], "u": unit, "p": {"r": {"id": uid, "i": 0, "vt": vt}}},
+                {"uid": uid * 10 + 2, "n": "Shop", "f": 0, "y": -0.297, "x": 36.05, "u": unit, "p": {"r": {"id": uid, "i": 1, "vt": vt + 3600}}},
+            ]
+            return {"uid": uid, "n": f"Route {uid}", "ord": [o["uid"] for o in orders], "st": {"u": unit}}, orders
+
+        done, done_orders = route(111, 7, START)
+        running, running_orders = route(222, 8, START + 1800)
+        day = service.local_day(START)
+        service._synced.clear()
+        with patch("services.logistics.service.wialon.finished_routes", return_value=([done], done_orders)), \
+             patch("services.logistics.service.wialon.active_routes", return_value=([running], running_orders)) as active, \
+             patch("services.logistics.service._unit_names", return_value={7: "Truck 7", 8: "Truck 8"}), \
+             patch("services.logistics.service.store.insert_missing") as insert, \
+             patch("services.logistics.service.store.refresh_unfinished") as refresh:
+            service.sync_wialon_history("token", 25601229, day, day, now=END)
+        keys = sorted(r["source_key"] for r in insert.call_args.args[0])
+        self.assertEqual(keys, ["wialon:25601229:111", "wialon:25601229:222"])
+        refresh.assert_called_once()
+        self.assertEqual(active.call_args.args[2], service.day_start(day))
+        self.assertEqual(active.call_args.args[3], service.day_start(day) + 86400)
+
+    def test_sync_still_keeps_running_routes_when_history_fails(self):
+        day = service.local_day(START)
+        service._synced.clear()
+        orders = [{"uid": 1, "n": "Shop", "f": 0, "y": -0.297, "x": 36.05, "u": 8, "p": {"r": {"id": 5, "i": 0, "vt": START}}}]
+        with patch("services.logistics.service.wialon.finished_routes", side_effect=RuntimeError("down")), \
+             patch("services.logistics.service.wialon.active_routes", return_value=([{"uid": 5, "st": {"u": 8}}], orders)), \
+             patch("services.logistics.service._unit_names", return_value={8: "Truck 8"}), \
+             patch("services.logistics.service.store.insert_missing") as insert, \
+             patch("services.logistics.service.store.refresh_unfinished"):
+            service.sync_wialon_history("token", 25601229, day, day, now=END)
+        self.assertEqual(len(insert.call_args.args[0]), 1)
+        # Not marked as read, so the next request tries history again.
+        self.assertEqual(service._synced, {})
+
+    def test_refresh_only_patches_changed_wialon_trips(self):
+        plan = build_plan(STOPS, DEPOT, START, END, use_road=False)
+        row = store.trip_row(resource_id=25601229, source="wialon", route_uid=9, route_name="R", unit_id=1, unit_name="T",
+                             warehouse="MORL", day="2026-10-28", start=START, end=END, plan=plan)
+        same = {"id": "a", "source_key": row["source_key"], "unit_id": 1, "route_name": "R",
+                "window_from": row["window_from"], "window_to": row["window_to"], "plan": plan}
+        calls = []
+
+        class Res:
+            def __init__(self, data):
+                self.data = data
+
+            def json(self):
+                return self.data
+
+        def fake(method, **kw):
+            calls.append(method)
+            return Res([same]) if method == "GET" else Res(None)
+
+        with patch("services.logistics.store._request", side_effect=fake):
+            store.refresh_unfinished([row])
+            self.assertEqual(calls, ["GET"])
+            same["route_name"] = "Old name"
+            store.refresh_unfinished([row])
+        self.assertEqual(calls, ["GET", "GET", "PATCH"])
+
     def test_upload_and_history_share_the_route_key(self):
         upload = store.trip_row(
             resource_id=25601229, source="upload", route_uid=1793000000, route_name="x", unit_id=1, unit_name="x",

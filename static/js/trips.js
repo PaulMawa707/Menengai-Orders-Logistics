@@ -566,7 +566,7 @@ function initDrawer(onChanged) {
         <div class="card-head"><b>Stops</b><span class="sub">Visited within ${fmtNum(plan.rules.stopRadiusM)} m · late after ETA + ${plan.rules.lateMin} min</span></div>
         <div class="table-wrap"><table class="stops-table"><thead><tr><th class="num">#</th><th>Stop</th><th class="right">ETA</th><th class="right">Arrived</th><th>Status</th></tr></thead><tbody>${stopRows}</tbody></table></div>
       </div>
-      <p class="data-meta">${d.source === 'upload' ? `Uploaded by ${esc(d.createdBy || '—')}${d.files ? ` from ${esc(d.files)}` : ''}. ` : 'Read from Wialon Logistics history. '}Progress is measured from the vehicle's positions in Wialon. Updated ${fmtTime(d.now, tz)} EAT.</p>`;
+      <p class="data-meta">${d.source === 'upload' ? `Uploaded by ${esc(d.createdBy || '—')}${d.files ? ` from ${esc(d.files)}` : ''}. ` : 'Read from Wialon Logistics. '}Progress is measured from the vehicle's positions in Wialon. Updated ${fmtTime(d.now, tz)} EAT.</p>`;
     body.querySelector('#trip-remove').addEventListener('click', remove);
     body.querySelectorAll('.stops-table tbody tr').forEach((tr) => tr.addEventListener('click', () => select(Number(tr.dataset.seq))));
     drawMap(d, visits);

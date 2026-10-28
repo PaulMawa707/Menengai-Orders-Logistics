@@ -244,13 +244,6 @@
     </div>
   </aside>
 
-  <footer class="footer">
-    {% if ct_logo_exists %}
-    <img src="{{ url_for('static', filename='img/CT-Logo.jpg') }}" alt="ControlTech" class="footer-logo" />
-    {% endif %}
-    <span>Powered by <a href="{{ controltech_url }}" target="_blank" rel="noopener">ControlTech</a></span>
-  </footer>
-
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
   <script src="{{ url_for('static', filename='js/reports.js') }}"></script>
