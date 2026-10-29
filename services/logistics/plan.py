@@ -14,7 +14,7 @@ SERVICE_MIN = float(os.getenv("LOGISTICS_SERVICE_MIN", "15"))
 CHUNK = 80
 
 RULES = {
-    "stopRadiusM": int(os.getenv("LOGISTICS_STOP_RADIUS_M", "100")),
+    "stopRadiusM": int(os.getenv("LOGISTICS_STOP_RADIUS_M", "300")),
     "lateMin": int(os.getenv("LOGISTICS_LATE_MIN", "15")),
     "advanceMin": 0,
     "strictSequence": False,

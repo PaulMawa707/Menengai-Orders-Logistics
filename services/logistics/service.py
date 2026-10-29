@@ -314,6 +314,13 @@ def sync_wialon_history(token, resource_id, day_from, day_to, now=None):
 # ---- Tracking and summaries ----
 
 
+def current_rules(rows):
+    """Visit rules (stop radius, lateness) as configured now, also for trips planned before a change."""
+    for r in rows:
+        r["plan"] = {**r["plan"], "rules": {**r["plan"].get("rules", {}), **RULES}}
+    return rows
+
+
 def _span(row):
     plan = row["plan"]
     return store.unix(row["window_from"]) - LEAD_S, max(store.unix(row["window_to"]), plan["returnAt"]) + TAIL_S
@@ -372,7 +379,7 @@ def list_page(token, resource_id, day_from, day_to, q="", state=None, page=1, pa
     """Trips of a period; states are first estimated from the clock, then measured for the visible page."""
     now = int(time.time())
     sync_wialon_history(token, resource_id, day_from, day_to, now)
-    rows = store.list_trips(resource_id, day_from, day_to, with_results=True)
+    rows = current_rules(store.list_trips(resource_id, day_from, day_to, with_results=True))
     q = (q or "").strip().lower()
     if q:
         rows = [r for r in rows if q in r["route_name"].lower() or q in r["unit_name"].lower()]
@@ -427,7 +434,7 @@ def road_plan(row):
 
 def trip_detail(token, resource_id, trip_id):
     now = int(time.time())
-    row = store.get_trip(resource_id, trip_id)
+    row = current_rules([store.get_trip(resource_id, trip_id)])[0]
     row["plan"] = road_plan(row)
     tracking = with_wialon(row["plan"], tracking_for(token, row, now), now)
     return {**to_summary(row, tracking, now), "plan": row["plan"], "tracking": tracking, "now": now, "tz": TZ_S}
@@ -440,7 +447,7 @@ def report_trips(token, resource_id, day_from, day_to, unit_id=None, failed=None
     """
     now = int(time.time())
     sync_wialon_history(token, resource_id, day_from, day_to, now)
-    rows = store.list_trips(resource_id, day_from, day_to, with_results=True)
+    rows = current_rules(store.list_trips(resource_id, day_from, day_to, with_results=True))
     if unit_id:
         rows = [r for r in rows if int(r["unit_id"]) == int(unit_id)]
     tracking = [r.get("result") for r in rows]
