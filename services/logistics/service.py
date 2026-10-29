@@ -407,6 +407,10 @@ def list_page(token, resource_id, day_from, day_to, q="", state=None, page=1, pa
 
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         summaries = list(pool.map(summarise, page_idx))
+    # The visible trips were measured; count them as measured.
+    for i, s in zip(page_idx, summaries):
+        counts[rough[i]["state"]] -= 1
+        counts[s["state"]] += 1
     return {"rows": summaries, "total": len(idx), "page": page, "pageSize": page_size, "counts": counts, "now": now, "tz": TZ_S}
 
 

@@ -293,6 +293,7 @@ class ListTests(unittest.TestCase):
         self.assertEqual({r["state"] for r in out["rows"]}, {"ended"})
         self.assertTrue(all(r["progress"]["missed"] == 3 for r in out["rows"]))
         self.assertEqual(unit_track.call_count, 2)
+        self.assertEqual(sum(out["counts"].values()), 2)
         # Finished and settled: results are kept so the list need not reload positions.
         self.assertEqual(save_result.call_count, 2)
 
@@ -397,6 +398,28 @@ class AppTests(unittest.TestCase):
             content_type="multipart/form-data",
         )
         self.assertEqual(r.status_code, 400)
+
+
+class CountTests(unittest.TestCase):
+    def test_counters_follow_the_measured_state_of_visible_trips(self):
+        plan = build_plan(STOPS, DEPOT, START, END, use_road=False)
+        row = {
+            "id": "a", "resource_id": 25601229, "source": "upload", "source_key": "wialon:25601229:1", "route_uid": 1,
+            "route_name": "R", "unit_id": 1, "unit_name": "T", "warehouse": "MORL", "day": service.local_day(START),
+            "window_from": store._iso(START), "window_to": store._iso(END), "plan": plan, "files": "", "created_by": "m", "result": None,
+        }
+        # Every stop visited during the window: the clock alone says on the road, positions say completed.
+        pts = [(s["eta"], s["lat"], s["lon"], 0) for s in plan["stops"]]
+        pts = [(p[0] + k, p[1], p[2], 0) for p in pts for k in (0, 90)]
+        with patch("services.logistics.service.sync_wialon_history"), \
+             patch("services.logistics.service.store.list_trips", return_value=[row]), \
+             patch("services.logistics.service.wialon.unit_track", return_value=pts), \
+             patch("services.logistics.service.store.save_result"), \
+             patch("services.logistics.service.time.time", return_value=START + 4 * 3600):
+            out = service.list_page("token", 25601229, row["day"], row["day"])
+        self.assertEqual(out["rows"][0]["state"], "completed")
+        self.assertEqual(out["counts"]["completed"], 1)
+        self.assertEqual(out["counts"]["in_progress"], 0)
 
 
 class ReportTests(unittest.TestCase):
