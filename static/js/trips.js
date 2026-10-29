@@ -602,7 +602,9 @@ function initDrawer(onChanged) {
           arrived = `<span class="sub" title="Closest the vehicle came">${v.closestM >= 1000 ? `${fmtNum(v.closestM / 1000, 1)} km` : `${v.closestM} m`} away</span>`;
         }
         const status = v
-          ? `${badge(VISIT_META[v.status])}${v.wialon ? ' <span class="sub" title="Marked fulfilled in Wialon Logistics">fulfilled in Wialon</span>' : ''}${v.outOfOrder ? ' <span class="sub warn">out of order</span>' : ''}${v.leftAt ? ` <span class="sub">left ${fmtTime(v.leftAt, tz)}</span>` : ''}`
+          ? `${badge(VISIT_META[v.status])}${v.leftAt ? `<div class="sub">Left at ${fmtTime(v.leftAt, tz)}</div>` : ''}${
+              v.wialon ? '<div class="sub" title="No 2-minute stop was seen in the positions; Wialon Logistics marked the order fulfilled, and these times are Wialon’s.">Fulfilled in Wialon (times from Wialon)</div>' : ''
+            }${v.outOfOrder ? '<div class="sub warn">Out of order</div>' : ''}`
           : '<span class="sub">Planned</span>';
         const detail = [s.location || `${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}`, s.legKm > 0 ? `${fmtNum(s.legKm, 1)} km` : '', s.weightKg ? `${fmtNum(s.weightKg)} kg` : '']
           .filter(Boolean)
