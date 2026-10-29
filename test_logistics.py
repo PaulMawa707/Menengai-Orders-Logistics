@@ -495,13 +495,14 @@ class WialonFulfilmentTests(unittest.TestCase):
         t = service.with_wialon(self.plan, None, END + 60)
         self.assertEqual(trip_state(START, END, END + 60, t), "completed")
 
-    def test_gps_visit_is_kept(self):
+    def test_gps_visit_keeps_its_times_with_wialons_verdict(self):
         a = self.plan["stops"][0]
         a.update(ws=2, wat=a["eta"] + 999)
         gps = self._gps_missed_all()
         gps["visits"][0].update(status="late", arrivedAt=a["eta"] + 5000)
         t = service.with_wialon(self.plan, gps, END + 60)
-        self.assertEqual(t["visits"][0]["status"], "late")
+        self.assertEqual(t["visits"][0]["status"], "on_time")
+        self.assertEqual(t["visits"][0]["arrivedAt"], a["eta"] + 5000)
         self.assertNotIn("wialon", t["visits"][0])
 
     def test_no_wialon_data_leaves_tracking_alone(self):

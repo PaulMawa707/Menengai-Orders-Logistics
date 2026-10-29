@@ -193,8 +193,12 @@ def with_wialon(plan, tracking, now):
     visits = []
     for v in tracking["visits"]:
         s = by_seq.get(v["seq"], {})
-        if v["status"] not in VISITED and s.get("ws") in WIALON_DONE:
-            v = {**v, "status": WIALON_DONE[s["ws"]], "arrivedAt": s.get("wat"), "leftAt": s.get("wleft"), "wialon": True}
+        if s.get("ws") in WIALON_DONE:
+            if v["status"] not in VISITED:
+                v = {**v, "status": WIALON_DONE[s["ws"]], "arrivedAt": s.get("wat"), "leftAt": s.get("wleft"), "wialon": True}
+            else:
+                # In time or late as Wialon judged it (against the order's delivery interval); times stay from positions.
+                v = {**v, "status": WIALON_DONE[s["ws"]]}
         visits.append(v)
     return {
         **tracking,
