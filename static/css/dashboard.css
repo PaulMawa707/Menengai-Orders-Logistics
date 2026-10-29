@@ -356,9 +356,7 @@ body.has-bg > * {
 .range-error { font-size: 0.8rem; color: var(--err); }
 .toolbar-end { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
 
-/* ---- Import from Excel and Plan a trip ---- */
-.panel[data-panel="import"] .dispatch-form { max-width: 900px; }
-.form-intro { font-size: 0.85rem; color: var(--muted); margin-bottom: 1rem; }
+/* ---- Plan a trip ---- */
 .plan-card { padding: 1rem; overflow: visible; }
 .plan-hint { margin-top: 0.75rem; }
 .plan-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; }

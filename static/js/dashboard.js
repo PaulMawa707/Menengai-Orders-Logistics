@@ -13,24 +13,6 @@ function tickClock() {
     `${pad(eat.getHours())}:${pad(eat.getMinutes())}:${pad(eat.getSeconds())}`;
 }
 
-function toDatetimeLocal(d) {
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function initDatetimeDefaults() {
-  const now = new Date();
-  const from = new Date(now);
-  from.setHours(6, 0, 0, 0);
-  const end = new Date(now);
-  end.setHours(18, 0, 0, 0);
-  document.querySelectorAll('.route-from').forEach((el) => {
-    if (!el.value) el.value = toDatetimeLocal(from);
-  });
-  document.querySelectorAll('.route-end').forEach((el) => {
-    if (!el.value) el.value = toDatetimeLocal(end);
-  });
-}
-
 function showToast(message, ok) {
   let toast = document.getElementById('app-toast');
   if (!toast) {
@@ -42,71 +24,6 @@ function showToast(message, ok) {
   toast.textContent = message;
   toast.className = 'toast show ' + (ok ? 'ok' : 'err');
   setTimeout(() => toast.classList.remove('show'), 5000);
-}
-
-function setAlert(el, message, type) {
-  if (!el) return;
-  el.className = 'result-alert ' + type;
-  el.innerHTML = message;
-  el.classList.remove('hidden');
-}
-
-async function submitDispatchForm(form, endpoint, ordersFileList) {
-  const alertEl = form.querySelector('.result-alert');
-  const btn = form.querySelector('[type="submit"]');
-  const assetId = document.getElementById('asset-item-id');
-  const orderFiles = ordersFileList?.getFiles?.() || [];
-  if (!orderFiles.length) {
-    showToast('Please upload at least one orders Excel file', false);
-    return;
-  }
-  if (!assetId?.value) {
-    showToast('Please select an asset', false);
-    return;
-  }
-
-  const fd = new FormData(form);
-  fd.delete('orders');
-  orderFiles.forEach((file) => fd.append('orders', file, file.name));
-  btn.disabled = true;
-  if (alertEl) {
-    alertEl.className = 'result-alert info';
-    alertEl.textContent = 'Processing…';
-    alertEl.classList.remove('hidden');
-  }
-  try {
-    const res = await fetch(endpoint, { method: 'POST', body: fd, credentials: 'same-origin' });
-    const data = await res.json();
-    if (data.error === 0) {
-      let html = `✅ ${data.message || 'Route created.'}`;
-      if (data.summary) {
-        html += `<br>Delivery points: ${data.summary.delivery_points} · Tonnage: ${data.summary.tonnage} · Amount: ${data.summary.amount} · Warehouse: ${data.summary.warehouse}`;
-      }
-      if (data.planning_url) {
-        html += `<br><a href="${data.planning_url}" target="_blank" rel="noopener">Open Wialon Logistics</a>`;
-      }
-      if (data.trip_id) {
-        html += ` · <a href="#trips" data-trip-id="${data.trip_id}">View trip on the dashboard</a>`;
-      } else if (data.trip_warning) {
-        const warning = String(data.trip_warning).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
-        html += `<br>⚠️ ${warning}`;
-      }
-      setAlert(alertEl, html, 'ok');
-      alertEl?.querySelector('[data-trip-id]')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        window.menengaiTrips?.openTrip(data.trip_id, data.trip_day || null);
-      });
-      showToast('Route created successfully', true);
-    } else {
-      setAlert(alertEl, `❌ ${data.message || 'Unknown error'}`, 'err');
-      showToast(data.message || 'Dispatch failed', false);
-    }
-  } catch (err) {
-    setAlert(alertEl, `❌ ${err.message}`, 'err');
-    showToast(err.message, false);
-  } finally {
-    btn.disabled = false;
-  }
 }
 
 function initOrdersFileList(prefix = '') {
@@ -365,12 +282,4 @@ function initAssetPicker(ordersFileList, prefix = '') {
 document.addEventListener('DOMContentLoaded', () => {
   tickClock();
   setInterval(tickClock, 1000);
-  initDatetimeDefaults();
-  const ordersFileList = initOrdersFileList();
-  initAssetPicker(ordersFileList);
-
-  document.getElementById('optimized-form')?.addEventListener('submit', (e) => {
-    e.preventDefault();
-    submitDispatchForm(e.target, '/api/optimized/dispatch', ordersFileList);
-  });
 });

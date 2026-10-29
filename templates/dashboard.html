@@ -33,9 +33,7 @@
 
     <nav class="tabs" role="tablist">
       <button type="button" class="tab active" data-tab="trips" role="tab" aria-selected="true">🚚 Trips</button>
-      <button type="button" class="tab" data-tab="reports" role="tab" aria-selected="false">📊 Reports</button>
-      <button type="button" class="tab" data-tab="import" role="tab" aria-selected="false">📄 Import from Excel</button>
-    </nav>
+      <button type="button" class="tab" data-tab="reports" role="tab" aria-selected="false">📊 Reports</button>    </nav>
 
     <section class="panel active" data-panel="trips">
       <div id="trips-storage-alert" class="result-alert err hidden">
@@ -105,60 +103,6 @@
       </div>
     </section>
 
-    <section class="panel" data-panel="import" hidden>
-      <form id="optimized-form" class="dispatch-form" enctype="multipart/form-data">
-        <p class="form-intro">Upload Excel orders, select an asset, and dispatch the route straight to Wialon. Use <b>Plan a trip</b> on the Trips tab to preview the schedule first.</p>
-        <div class="form-grid">
-          <label class="field field-full">
-            <span>Orders Excel file(s)</span>
-            <div class="file-upload-wrap">
-              <input type="file" id="orders-input" name="orders" accept=".xls,.xlsx" multiple class="file-input-hidden" />
-              <button type="button" class="btn-file-choose" id="orders-choose-btn">Choose files</button>
-              <span class="file-upload-hint" id="orders-hint">No files chosen</span>
-            </div>
-            <ul id="orders-file-list" class="file-chip-list hidden" aria-live="polite"></ul>
-            <small id="orders-summary" class="field-hint hidden" aria-live="polite"></small>
-          </label>
-          <label class="field field-full asset-picker">
-            <span>Asset / Truck</span>
-            <div class="asset-picker-wrap">
-              <input type="text" id="asset-search" placeholder="Search by plate or name…" autocomplete="off"
-                aria-autocomplete="list" aria-controls="asset-suggestions" aria-expanded="false" />
-              <input type="hidden" name="asset_item_id" id="asset-item-id" required />
-              <ul id="asset-suggestions" class="asset-suggestions hidden" role="listbox"></ul>
-            </div>
-            <small id="asset-selected-label" class="field-hint hidden"></small>
-          </label>
-          <label class="field">
-            <span>Route From</span>
-            <input type="datetime-local" name="route_from" class="route-from" required />
-          </label>
-          <label class="field">
-            <span>Route End</span>
-            <input type="datetime-local" name="route_end" class="route-end" required />
-          </label>
-          <label class="field">
-            <span>Warehouse</span>
-            <select name="warehouse" required>
-              {% for wh in warehouses %}
-              <option value="{{ wh }}" {% if wh == 'MORL' %}selected{% endif %}>{{ wh }}</option>
-              {% endfor %}
-            </select>
-          </label>
-          <label class="field">
-            <span>Stop order</span>
-            <select name="stop_order">
-              <option value="warehouse" selected>Closest to the warehouse first</option>
-              <option value="nearest">Nearest next stop</option>
-            </select>
-          </label>
-        </div>
-        <div class="form-actions">
-          <button type="submit" class="btn-primary">Upload and Dispatch</button>
-        </div>
-        <div class="result-alert hidden"></div>
-      </form>
-    </section>
   </main>
 
   <div class="drawer-backdrop hidden" id="trip-drawer-backdrop"></div>

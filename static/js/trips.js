@@ -348,7 +348,7 @@ function initTrips(drawer) {
     if (!data.rows.length) {
       const filtered = st.q || st.state;
       el.body.innerHTML = `<div class="empty"><b>${filtered ? 'No trips match' : `No trips for ${esc(period)}`}</b><p>${
-        filtered ? 'Try clearing the filters.' : 'Use Plan a trip or the Import from Excel tab; each dispatched route appears here on its day.'
+        filtered ? 'Try clearing the filters.' : 'Use Plan a trip to upload orders; each dispatched route appears here on its day.'
       }</p></div>`;
       el.pager.innerHTML = '';
       return;
