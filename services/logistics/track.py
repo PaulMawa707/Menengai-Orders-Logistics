@@ -18,6 +18,15 @@ MAX_KMH = 200
 TRIP_STATES = ["in_progress", "scheduled", "completed", "ended"]
 
 
+def arrival_status(arrived, st, rules) -> str:
+    """On time, early or late against the stop's planned arrival (ETA plus the allowed lateness)."""
+    if arrived > st.get("dueBy", st["eta"] + rules["lateMin"] * 60):
+        return "late"
+    if rules["advanceMin"] > 0 and arrived < st["eta"] - rules["advanceMin"] * 60:
+        return "early"
+    return "on_time"
+
+
 def _accepts(seg, rules) -> bool:
     """A pass through the stop's circle is a visit when the vehicle stopped there long enough (driving past is not)."""
     if rules.get("completeOnLeave"):
@@ -77,12 +86,7 @@ def track_plan(plan: dict, pts: list, now: int) -> dict:
         seg, closest, passed = _first_visit(pts, st["lat"], st["lon"], start, rules)
         status = "pending"
         if seg:
-            if seg["from"] > st.get("dueBy", st["eta"] + rules["lateMin"] * 60):
-                status = "late"
-            elif rules["advanceMin"] > 0 and seg["from"] < st["eta"] - rules["advanceMin"] * 60:
-                status = "early"
-            else:
-                status = "on_time"
+            status = arrival_status(seg["from"], st, rules)
         elif now > plan["end"]:
             status = "missed"
         out_of_order = bool(seg) and rules["strictSequence"] and seg["from"] < latest

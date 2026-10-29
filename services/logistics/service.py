@@ -10,7 +10,7 @@ from services import assets
 from . import store, wialon
 from .geo import decode_polyline, dist_m, thin
 from .plan import MAX_GEOMETRY, RULES, build_plan, road_legs
-from .track import LEAD_S, TAIL_S, TRIP_STATES, progress_of, track_plan, trip_state
+from .track import LEAD_S, TAIL_S, TRIP_STATES, arrival_status, progress_of, track_plan, trip_state
 
 TZ_S = 3 * 3600
 EAT = timezone(timedelta(seconds=TZ_S))
@@ -193,15 +193,13 @@ def with_wialon(plan, tracking, now):
     visits = []
     for v in tracking["visits"]:
         s = by_seq.get(v["seq"], {})
-        if s.get("ws") in WIALON_DONE:
-            if v["status"] not in VISITED:
-                # Fulfilled in Wialon without a stop in the positions: the vehicle drove past; show when it passed.
-                arrived = v.get("passedAt") or s.get("wat")
-                left = v.get("passedLeft") if v.get("passedAt") else s.get("wleft")
-                v = {**v, "status": WIALON_DONE[s["ws"]], "arrivedAt": arrived, "leftAt": left, "noStop": True}
-            else:
-                # In time or late as Wialon judged it (against the order's delivery interval); times stay from positions.
-                v = {**v, "status": WIALON_DONE[s["ws"]]}
+        if s.get("ws") in WIALON_DONE and v["status"] not in VISITED:
+            # Fulfilled in Wialon without a stop in the positions: the vehicle drove past; show when it passed.
+            # On time or late is judged against the planned arrival, like every other stop.
+            arrived = v.get("passedAt") or s.get("wat")
+            left = v.get("passedLeft") if v.get("passedAt") else s.get("wleft")
+            status = arrival_status(arrived, s, plan["rules"]) if arrived else WIALON_DONE[s["ws"]]
+            v = {**v, "status": status, "arrivedAt": arrived, "leftAt": left, "noStop": True}
         visits.append(v)
     return {
         **tracking,
