@@ -36,6 +36,8 @@ def _first_visit(pts, lat, lon, after, rules):
     d_lon = d_lat / max(0.1, math.cos(math.radians(lat)))
     closest = None
     seg = None
+    # The first time the vehicle went through the circle without stopping (shown, but not a delivery).
+    passed = None
     for t, y, x, s in pts:
         if t < after:
             continue
@@ -57,12 +59,13 @@ def _first_visit(pts, lat, lon, after, rules):
         elif seg:
             seg["open"] = False
             if _accepts(seg, rules):
-                return seg, closest
+                return seg, closest, passed
+            passed = passed or seg
             seg = None
     # Still inside the circle at the latest position: a visit if it stopped long enough or is standing there now.
     if seg and (_accepts(seg, rules) or seg["slow"]):
-        return seg, closest
-    return None, closest
+        return seg, closest, passed
+    return None, closest, passed or seg
 
 
 def track_plan(plan: dict, pts: list, now: int) -> dict:
@@ -71,7 +74,7 @@ def track_plan(plan: dict, pts: list, now: int) -> dict:
     visits = []
     latest = 0
     for st in plan["stops"]:
-        seg, closest = _first_visit(pts, st["lat"], st["lon"], start, rules)
+        seg, closest, passed = _first_visit(pts, st["lat"], st["lon"], start, rules)
         status = "pending"
         if seg:
             if seg["from"] > st.get("dueBy", st["eta"] + rules["lateMin"] * 60):
@@ -93,6 +96,11 @@ def track_plan(plan: dict, pts: list, now: int) -> dict:
                 "leftAt": seg["to"] if seg and not seg["open"] else None,
                 "closestM": None if closest is None else round(closest),
                 "outOfOrder": out_of_order,
+                **(
+                    {"passedAt": passed["from"], "passedLeft": None if passed["open"] else passed["to"]}
+                    if passed and not seg
+                    else {}
+                ),
             }
         )
 

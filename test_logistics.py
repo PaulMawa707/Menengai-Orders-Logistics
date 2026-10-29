@@ -538,7 +538,7 @@ class WialonFulfilmentTests(unittest.TestCase):
         self.plan["wStart"], self.plan["wReturn"] = START + 300, END - 60
         t = service.with_wialon(self.plan, self._gps_missed_all(), END + 60)
         self.assertEqual([v["status"] for v in t["visits"]], ["on_time", "late", "missed"])
-        self.assertTrue(t["visits"][0]["wialon"])
+        self.assertTrue(t["visits"][0]["noStop"])
         self.assertEqual(t["visits"][0]["arrivedAt"], a["eta"] + 120)
         self.assertEqual((t["startedAt"], t["returnedAt"]), (START + 300, END - 60))
 
@@ -559,7 +559,22 @@ class WialonFulfilmentTests(unittest.TestCase):
         t = service.with_wialon(self.plan, gps, END + 60)
         self.assertEqual(t["visits"][0]["status"], "on_time")
         self.assertEqual(t["visits"][0]["arrivedAt"], a["eta"] + 5000)
-        self.assertNotIn("wialon", t["visits"][0])
+        self.assertNotIn("noStop", t["visits"][0])
+
+    def test_wialon_fulfilled_drive_by_shows_when_it_passed(self):
+        a = self.plan["stops"][0]
+        a.update(ws=2, wat=a["eta"] + 5, wleft=a["eta"] + 11)
+        pts = [
+            (a["eta"] - 20, a["lat"] + 0.001, a["lon"], 34),
+            (a["eta"], a["lat"], a["lon"], 34),
+            (a["eta"] + 20, a["lat"] - 0.001, a["lon"], 35),
+            (a["eta"] + 60, a["lat"] - 0.01, a["lon"], 45),
+        ]
+        gps = track_plan(self.plan, pts, END + 60)
+        self.assertEqual(gps["visits"][0]["status"], "missed")
+        self.assertEqual((gps["visits"][0]["passedAt"], gps["visits"][0]["passedLeft"]), (a["eta"] - 20, a["eta"] + 20))
+        v = service.with_wialon(self.plan, gps, END + 60)["visits"][0]
+        self.assertEqual((v["status"], v["arrivedAt"], v["leftAt"], v["noStop"]), ("on_time", a["eta"] - 20, a["eta"] + 20, True))
 
     def test_no_wialon_data_leaves_tracking_alone(self):
         self.assertIsNone(service.with_wialon(self.plan, None, END + 60))
@@ -581,7 +596,7 @@ class AlertTests(unittest.TestCase):
         tracking = {
             "visits": [
                 {"seq": 1, "status": "on_time", "arrivedAt": a["eta"] + 60, "leftAt": None, "closestM": 5, "outOfOrder": False},
-                {"seq": 2, "status": "late", "arrivedAt": b["eta"] + 3600, "leftAt": None, "closestM": 5, "outOfOrder": False, "wialon": True},
+                {"seq": 2, "status": "late", "arrivedAt": b["eta"] + 3600, "leftAt": None, "closestM": 5, "outOfOrder": False, "noStop": True},
                 {"seq": 3, "status": "missed", "arrivedAt": None, "leftAt": None, "closestM": 900, "outOfOrder": False},
             ],
             "startedAt": START + 100, "returnedAt": None, "km": 30, "lastPos": None, "path": [],
@@ -590,7 +605,7 @@ class AlertTests(unittest.TestCase):
         s = service.to_summary(row, tracking, now)
         events = {e["kind"]: e for e in service.trip_alerts(row, tracking, s, now)}
         self.assertEqual(set(events), {"visit", "late", "missed", "ended"})
-        self.assertIn("fulfilled in Wialon", events["late"]["detail"])
+        self.assertIn("drove past, no stop", events["late"]["detail"])
         self.assertEqual(events["missed"]["at"], END)
         self.assertTrue(all(e["tripId"] == "t1" for e in events.values()))
 

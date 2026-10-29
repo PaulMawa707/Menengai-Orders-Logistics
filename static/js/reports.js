@@ -367,15 +367,22 @@ function initReports({ openTrip }) {
         const svc = serviceMin(s);
         const tone = s.status === 'on_time' || s.status === 'early' ? 'completed' : s.status === 'late' ? 'late' : s.status === 'missed' ? 'ended' : 'pending';
         const detail = [s.location, s.invoice && `Invoice ${s.invoice}`].filter(Boolean).join(' · ') || '—';
-        const away = !s.arrivedAt && s.closestM !== null && s.closestM !== undefined ? `<div class="sub">closest ${s.closestM >= 1000 ? `${fmtNum(s.closestM / 1000, 1)} km` : `${s.closestM} m`}</div>` : '';
+        const at = s.arrivedAt || s.passedAt;
+        const left = s.arrivedAt ? s.leftAt : s.passedLeft;
+        const droveBy = !!at && (s.noStop || !s.arrivedAt);
+        const away = droveBy
+          ? '<div class="sub warn">drove past, no stop</div>'
+          : !at && s.closestM !== null && s.closestM !== undefined
+            ? `<div class="sub">closest ${s.closestM >= 1000 ? `${fmtNum(s.closestM / 1000, 1)} km` : `${s.closestM} m`}</div>`
+            : '';
         return `<tr>
           <td class="num">${s.seq}</td>
           <td><div class="strong">${esc(s.name)}</div><div class="sub">${esc(detail)}</div></td>
           <td>${badge({ label: stopLabel(s), cls: tone })}${s.outOfOrder ? '<div class="sub warn">out of sequence</div>' : ''}${away}</td>
-          <td class="center nowrap">${t(s.eta)} <span class="sub">/</span> ${t(s.arrivedAt)}</td>
-          <td class="right nowrap ${s.status === 'late' ? 'warn' : 'sub'}">${devText(s.deviationMin)}</td>
-          <td class="center nowrap">${t(s.etd)} <span class="sub">/</span> ${t(s.leftAt)}</td>
-          <td class="right nowrap">${fmtMin(plannedServiceMin(s))} <span class="sub">/</span> ${fmtMin(svc)}</td>
+          <td class="center nowrap">${t(s.eta)} <span class="sub">/</span> ${t(at)}</td>
+          <td class="right nowrap ${s.status === 'late' ? 'warn' : 'sub'}">${devText(at ? Math.round((at - s.eta) / 60) : null)}</td>
+          <td class="center nowrap">${t(s.etd)} <span class="sub">/</span> ${t(left)}</td>
+          <td class="right nowrap">${fmtMin(plannedServiceMin(s))} <span class="sub">/</span> ${droveBy ? '—' : fmtMin(svc)}</td>
           <td class="right">${fmtNum(s.plannedKm, 1)}</td>
           <td class="right nowrap sub">${s.weightKg ? `${fmtNum(s.weightKg)} kg` : ''}${s.amount ? `<div>${fmtNum(s.amount, 2)}</div>` : s.weightKg ? '' : '—'}</td>
         </tr>`;

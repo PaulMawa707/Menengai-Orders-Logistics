@@ -195,7 +195,10 @@ def with_wialon(plan, tracking, now):
         s = by_seq.get(v["seq"], {})
         if s.get("ws") in WIALON_DONE:
             if v["status"] not in VISITED:
-                v = {**v, "status": WIALON_DONE[s["ws"]], "arrivedAt": s.get("wat"), "leftAt": s.get("wleft"), "wialon": True}
+                # Fulfilled in Wialon without a stop in the positions: the vehicle drove past; show when it passed.
+                arrived = v.get("passedAt") or s.get("wat")
+                left = v.get("passedLeft") if v.get("passedAt") else s.get("wleft")
+                v = {**v, "status": WIALON_DONE[s["ws"]], "arrivedAt": arrived, "leftAt": left, "noStop": True}
             else:
                 # In time or late as Wialon judged it (against the order's delivery interval); times stay from positions.
                 v = {**v, "status": WIALON_DONE[s["ws"]]}
@@ -518,7 +521,7 @@ def trip_alerts(row, tracking, s, now):
         where = f"{route} · stop {v['seq']} of {len(stops)}"
         if v["status"] in VISITED and v.get("arrivedAt"):
             dev = round((v["arrivedAt"] - st["eta"]) / 60)
-            by = " · fulfilled in Wialon" if v.get("wialon") else ""
+            by = " · drove past, no stop" if v.get("noStop") else ""
             if v["status"] == "late":
                 add(f"visit:{v['seq']}", "late", v["arrivedAt"], f"{unit} reached {st['name']} late", f"{where} · arrived {_hhmm(v['arrivedAt'])}, {dev} min after the ETA{by}")
             else:
@@ -594,6 +597,9 @@ def to_report_trip(row, tracking, summary):
                 "deviationMin": round((arrived - st["eta"]) / 60) if arrived else None,
                 "closestM": v.get("closestM"),
                 "outOfOrder": bool(v.get("outOfOrder")),
+                "noStop": bool(v.get("noStop")),
+                "passedAt": v.get("passedAt"),
+                "passedLeft": v.get("passedLeft"),
             }
         )
     return {

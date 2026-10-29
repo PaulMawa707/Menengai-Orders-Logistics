@@ -591,26 +591,34 @@ function initDrawer(onChanged) {
           : plan.routing === 'wialon'
             ? 'Wialon plan'
             : 'Straight line';
+    const minutesVs = (actual, planned) => {
+      const m = Math.round((actual - planned) / 60);
+      return Math.abs(m) >= 1 ? `<div class="sub ${m > 0 ? 'warn' : 'info'}">${m > 0 ? '+' : ''}${m} min</div>` : '';
+    };
+    const stayed = (a, b) => (a && b ? `<div class="sub">${fmtNum(Math.round((b - a) / 60))} min at the stop</div>` : '');
     const stopRows = plan.stops
       .map((s) => {
         const v = visits.get(s.seq);
-        const late = v?.arrivedAt ? Math.round((v.arrivedAt - s.eta) / 60) : null;
-        let arrived = '<span class="sub">—</span>';
-        if (v?.arrivedAt) {
-          arrived = `${fmtTime(v.arrivedAt, tz)}${late !== null && Math.abs(late) >= 1 ? `<div class="sub ${late > 0 ? 'warn' : 'info'}">${late > 0 ? '+' : ''}${late} min</div>` : ''}`;
+        const visited = v && ['on_time', 'early', 'late'].includes(v.status);
+        // Drove through without stopping: show when it passed, so a near-zero stay is not read as a delivery.
+        const at = visited ? v.arrivedAt : v?.passedAt;
+        const left = visited ? v.leftAt : v?.passedLeft;
+        const droveBy = !!at && (v.noStop || !visited);
+        let arrivedCell = '<span class="sub">—</span>';
+        if (at) {
+          arrivedCell = `${fmtTime(at, tz)}${minutesVs(at, s.eta)}`;
         } else if (v?.closestM !== null && v?.closestM !== undefined) {
-          arrived = `<span class="sub" title="Closest the vehicle came">${v.closestM >= 1000 ? `${fmtNum(v.closestM / 1000, 1)} km` : `${v.closestM} m`} away</span>`;
+          arrivedCell = `<span class="sub" title="Closest the vehicle came">${v.closestM >= 1000 ? `${fmtNum(v.closestM / 1000, 1)} km` : `${v.closestM} m`} away</span>`;
         }
+        const leftCell = left ? `${fmtTime(left, tz)}${droveBy ? '' : stayed(at, left)}` : at ? '<span class="sub">Still there</span>' : '<span class="sub">—</span>';
         const status = v
-          ? `${badge(VISIT_META[v.status])}${v.leftAt ? `<div class="sub">Left at ${fmtTime(v.leftAt, tz)}</div>` : ''}${
-              v.wialon ? '<div class="sub" title="No 2-minute stop was seen in the positions; Wialon Logistics marked the order fulfilled, and these times are Wialon’s.">Fulfilled in Wialon (times from Wialon)</div>' : ''
-            }${v.outOfOrder ? '<div class="sub warn">Out of order</div>' : ''}`
+          ? `${badge(VISIT_META[v.status])}${droveBy ? '<div class="sub warn">Drove past, no stop</div>' : ''}${v.outOfOrder ? '<div class="sub warn">Out of order</div>' : ''}`
           : '<span class="sub">Planned</span>';
         const detail = [s.location || `${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}`, s.legKm > 0 ? `${fmtNum(s.legKm, 1)} km` : '', s.weightKg ? `${fmtNum(s.weightKg)} kg` : '']
           .filter(Boolean)
           .join(' · ');
         return `<tr data-seq="${s.seq}"><td class="num">${s.seq}</td><td><div class="strong">${esc(s.name)}</div><div class="sub">${esc(detail)}</div></td>
-          <td class="right nowrap">${fmtTime(s.eta, tz)}</td><td class="right nowrap">${arrived}</td><td>${status}</td></tr>`;
+          <td class="right nowrap">${fmtTime(s.eta, tz)}</td><td class="right nowrap">${arrivedCell}</td><td class="right nowrap">${leftCell}</td><td>${status}</td></tr>`;
       })
       .join('');
     const depotRow = (which) => {
@@ -618,15 +626,16 @@ function initDrawer(onChanged) {
       const leaving = which === 'leave';
       const planned = leaving ? plan.start : plan.returnAt;
       const actual = leaving ? t?.startedAt : t?.returnedAt;
-      const diff = actual ? Math.round((actual - planned) / 60) : null;
       const over = d.state === 'completed' || d.state === 'ended';
       const status = actual
         ? badge({ label: leaving ? 'Left the warehouse' : 'Back at the warehouse', cls: 'completed' })
         : `<span class="sub ${over ? 'warn' : ''}">${leaving ? (over ? 'Departure not seen' : 'Not left yet') : over ? 'Return not seen' : 'Not back yet'}</span>`;
+      const time = actual ? `${fmtTime(actual, tz)}${minutesVs(actual, planned)}` : '<span class="sub">—</span>';
       return `<tr data-seq="W" class="depot-row"><td class="num"><span class="depot-chip">W</span></td>
         <td><div class="strong">${leaving ? 'Leave' : 'Return to'} ${esc(plan.depot.name)}</div><div class="sub">${leaving ? 'Departure from the warehouse' : 'Arrival back at the warehouse'}</div></td>
         <td class="right nowrap">${fmtTime(planned, tz)}</td>
-        <td class="right nowrap">${actual ? `${fmtTime(actual, tz)}${diff !== null && Math.abs(diff) >= 1 ? `<div class="sub ${diff > 0 ? 'warn' : 'info'}">${diff > 0 ? '+' : ''}${diff} min</div>` : ''}` : '<span class="sub">—</span>'}</td>
+        <td class="right nowrap">${leaving ? '' : time}</td>
+        <td class="right nowrap">${leaving ? time : ''}</td>
         <td>${status}</td></tr>`;
     };
     const allRows = depotRow('leave') + stopRows + depotRow('return');
@@ -653,7 +662,7 @@ function initDrawer(onChanged) {
       </div>
       <div class="card">
         <div class="card-head"><b>Stops</b><span class="sub">Visited when stopped ${plan.rules.minStopMin ? `${fmtNum(plan.rules.minStopMin)}+ min ` : ''}within ${fmtNum(plan.rules.stopRadiusM)} m · late after ETA + ${plan.rules.lateMin} min</span></div>
-        <div class="table-wrap"><table class="stops-table"><thead><tr><th class="num">#</th><th>Stop</th><th class="right">Planned</th><th class="right">Actual</th><th>Status</th></tr></thead><tbody>${allRows}</tbody></table></div>
+        <div class="table-wrap"><table class="stops-table"><thead><tr><th class="num">#</th><th>Stop</th><th class="right">Planned</th><th class="right">Arrived</th><th class="right">Left</th><th>Status</th></tr></thead><tbody>${allRows}</tbody></table></div>
       </div>
       <p class="data-meta">${d.source === 'upload' ? `Uploaded by ${esc(d.createdBy || '—')}${d.files ? ` from ${esc(d.files)}` : ''}. ` : 'Read from Wialon Logistics. '}Progress is measured from the vehicle's positions in Wialon. Updated ${fmtTime(d.now, tz)} EAT.</p>`;
     body.querySelector('#trip-remove').addEventListener('click', remove);
