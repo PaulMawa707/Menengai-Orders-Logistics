@@ -632,6 +632,18 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(r.get_json()["alerts"][0]["kind"], "visit")
 
 
+class WhereNowTests(unittest.TestCase):
+    def test_vehicle_not_back_is_reported_with_its_distance_from_the_warehouse(self):
+        plan = build_plan(STOPS, DEPOT, START, END, use_road=False)
+        pos = {"t": END, "lat": DEPOT["lat"] - 0.1, "lon": DEPOT["lon"], "s": 50}
+        out = service.where_now(plan, {"startedAt": START, "returnedAt": None, "lastPos": pos})
+        self.assertEqual(out["lastSeen"]["t"], END)
+        self.assertAlmostEqual(out["lastSeen"]["kmFromWarehouse"], 11.1, delta=0.2)
+        back = service.where_now(plan, {"startedAt": START, "returnedAt": END, "lastPos": pos})
+        self.assertIsNone(back["lastSeen"])
+        self.assertEqual(back["returnedAt"], END)
+
+
 class RouteLabelTests(unittest.TestCase):
     def test_automatic_wialon_names_show_the_vehicle(self):
         self.assertEqual(service.route_label({"route_name": "ROUTE_1793025583811", "unit_name": "FG - Menengai - KCW 193E"}), "FG - Menengai - KCW 193E")

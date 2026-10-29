@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from services import assets
 
 from . import store, wialon
-from .geo import decode_polyline, thin
+from .geo import decode_polyline, dist_m, thin
 from .plan import MAX_GEOMETRY, RULES, build_plan, road_legs
 from .track import LEAD_S, TAIL_S, TRIP_STATES, progress_of, track_plan, trip_state
 
@@ -374,7 +374,20 @@ def to_summary(row, tracking, now):
         "files": row.get("files") or "",
         "state": trip_state(w_from, max(w_to, plan["returnAt"]), now, tracking),
         "progress": progress_of(tracking) if tracking else None,
+        **where_now(plan, tracking),
     }
+
+
+def where_now(plan, tracking):
+    """Where a vehicle that has not come back to the warehouse was last seen, and how far from the warehouse."""
+    if not tracking or tracking.get("returnedAt") or not tracking.get("startedAt"):
+        return {"returnedAt": (tracking or {}).get("returnedAt"), "lastSeen": None}
+    pos = tracking.get("lastPos")
+    depot = plan.get("depot")
+    if not pos:
+        return {"returnedAt": None, "lastSeen": None}
+    away = round(dist_m(depot["lat"], depot["lon"], pos["lat"], pos["lon"]) / 1000, 1) if depot else None
+    return {"returnedAt": None, "lastSeen": {"t": pos["t"], "lat": pos["lat"], "lon": pos["lon"], "kmFromWarehouse": away}}
 
 
 SORTS = {

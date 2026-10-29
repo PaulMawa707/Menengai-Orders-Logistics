@@ -81,8 +81,16 @@ function initTabs(trips, reports) {
   return { show };
 }
 
-// Stop rows are keyed by sequence number; the warehouse rows by "W".
-const rowKey = (v) => (v === 'W' ? 'W' : Number(v));
+/** A trip whose stops are done but whose vehicle is not back at the warehouse: where it was last seen. */
+function returning(r, data) {
+  const seen = r.lastSeen;
+  if (!seen || r.returnedAt || (r.state !== 'completed' && r.state !== 'ended') || data.now - seen.t > 86400) return '';
+  const away = seen.kmFromWarehouse !== null ? ` · ${fmtNum(seen.kmFromWarehouse, 1)} km from ${esc(r.warehouse || 'the warehouse')}` : '';
+  return `<div class="sub warn">Returning${away} · seen ${fmtTime(seen.t, data.tz)}</div>`;
+}
+
+// Stop rows are keyed by sequence number; the warehouse rows by "W"; the vehicle by "V".
+const rowKey = (v) => (v === 'W' || v === 'V' ? v : Number(v));
 
 // ---- Maps ----
 
@@ -437,7 +445,7 @@ function initTrips(drawer) {
           <td class="nowrap">${oneDay ? '' : `<div class="strong">${esc(fmtDay(r.day))}</div>`}${fmtTime(r.windowFrom, data.tz)}–${fmtTime(r.windowTo, data.tz)}<div class="sub">back ${fmtTime(r.returnAt, data.tz)}</div></td>
           <td class="stops-cell">${stops}</td>
           <td class="right nowrap">${fmtNum(r.km, 1)} km</td>
-          <td>${badge(TRIP_META[r.state])}</td>
+          <td>${badge(TRIP_META[r.state])}${returning(r, data)}</td>
         </tr>`;
       })
       .join('');
@@ -627,12 +635,22 @@ function initDrawer(onChanged) {
       const planned = leaving ? plan.start : plan.returnAt;
       const actual = leaving ? t?.startedAt : t?.returnedAt;
       const over = d.state === 'completed' || d.state === 'ended';
-      const status = actual
+      let status = actual
         ? badge({ label: leaving ? 'Left the warehouse' : 'Back at the warehouse', cls: 'completed' })
         : `<span class="sub ${over ? 'warn' : ''}">${leaving ? (over ? 'Departure not seen' : 'Not left yet') : over ? 'Return not seen' : 'Not back yet'}</span>`;
-      const time = actual ? `${fmtTime(actual, tz)}${minutesVs(actual, planned)}` : '<span class="sub">—</span>';
-      return `<tr data-seq="W" class="depot-row"><td class="num"><span class="depot-chip">W</span></td>
-        <td><div class="strong">${leaving ? 'Leave' : 'Return to'} ${esc(plan.depot.name)}</div><div class="sub">${leaving ? 'Departure from the warehouse' : 'Arrival back at the warehouse'}</div></td>
+      let time = actual ? `${fmtTime(actual, tz)}${minutesVs(actual, planned)}` : '<span class="sub">—</span>';
+      let key = 'W';
+      let where = '';
+      const seen = d.lastSeen;
+      if (!leaving && !actual && seen) {
+        // Not back yet: where the vehicle is now; clicking the row shows it on the map.
+        key = 'V';
+        status = badge({ label: 'On the way back', cls: 'in_progress' });
+        time = `<span class="sub">Seen ${fmtTime(seen.t, tz)}</span>`;
+        where = `<div class="sub warn">🚚 ${seen.kmFromWarehouse !== null ? `${fmtNum(seen.kmFromWarehouse, 1)} km from ${esc(plan.depot.name)}, ` : ''}${esc(ago(seen.t, d.now))} · click to show on the map</div>`;
+      }
+      return `<tr data-seq="${key}" class="depot-row"><td class="num"><span class="depot-chip">W</span></td>
+        <td><div class="strong">${leaving ? 'Leave' : 'Return to'} ${esc(plan.depot.name)}</div><div class="sub">${leaving ? 'Departure from the warehouse' : 'Arrival back at the warehouse'}</div>${where}</td>
         <td class="right nowrap">${fmtTime(planned, tz)}</td>
         <td class="right nowrap">${leaving ? '' : time}</td>
         <td class="right nowrap">${leaving ? time : ''}</td>
@@ -713,11 +731,13 @@ function initDrawer(onChanged) {
       st.markers.set(s.seq, m);
       bounds.push([s.lat, s.lon]);
     });
+    // The vehicle is shown until it is back at the warehouse, also once every stop is done.
     const pos = d.tracking?.lastPos;
-    if (pos && d.state === 'in_progress') {
-      L.marker([pos.lat, pos.lon], { icon: L.divIcon({ className: 'pin vehicle', html: '🚚', iconSize: [28, 28] }) })
+    if (pos && (d.state === 'in_progress' || d.lastSeen)) {
+      const m = L.marker([pos.lat, pos.lon], { icon: L.divIcon({ className: 'pin vehicle', html: '🚚', iconSize: [28, 28] }), zIndexOffset: 1000 })
         .bindTooltip(`${esc(d.unitName)} · ${ago(pos.t, d.now)}`)
         .addTo(map);
+      st.markers.set('V', m);
       bounds.push([pos.lat, pos.lon]);
     }
     if (st.fitted && center) map.setView(center, zoom);
