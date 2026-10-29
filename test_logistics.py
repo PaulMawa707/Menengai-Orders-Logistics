@@ -212,6 +212,39 @@ class WialonHistoryTests(unittest.TestCase):
         self.assertEqual(patches[0]["plan"]["geometry"], road["geometry"])
         self.assertEqual(patches[0]["plan"]["stops"], plan["stops"])
 
+    def test_opening_a_straight_wialon_trip_works_out_its_road_once(self):
+        plan = build_plan(STOPS, DEPOT, START, END, use_road=False)
+        straight = {**plan, "routing": "wialon"}
+        row = {"id": "t1", "plan": straight}
+        road = [[-0.288, 36.045], [-0.29, 36.046], [-0.297, 36.05], [-0.31, 36.07]]
+        with patch("services.logistics.service.road_legs", return_value=([], road)) as legs, \
+             patch("services.logistics.service.store.update_plan") as keep:
+            out = service.road_plan(row)
+            self.assertEqual(out["routing"], "wialon_osrm")
+            self.assertEqual(out["geometry"], road)
+            keep.assert_called_once_with("t1", out)
+            # Waypoints: warehouse, the stops in Wialon's order, warehouse.
+            self.assertEqual(len(legs.call_args.args[0]), len(STOPS) + 2)
+            self.assertIs(service.road_plan({"id": "t2", "plan": out}), out)
+        self.assertEqual(legs.call_count, 1)
+
+    def test_refresh_keeps_a_road_worked_out_for_a_wialon_trip(self):
+        plan = build_plan(STOPS, DEPOT, START, END, use_road=False)
+        road = {**plan, "routing": "wialon_osrm", "geometry": [[-0.288, 36.045], [-0.3, 36.06], [-0.33, 36.1]]}
+        row = store.trip_row(resource_id=25601229, source="wialon", route_uid=9, route_name="R", unit_id=1, unit_name="T",
+                             warehouse="MORL", day="2026-10-28", start=START, end=END, plan={**plan, "routing": "wialon"})
+        have = {"id": "a", "source_key": row["source_key"], "unit_id": 1, "unit_name": "T", "route_name": "R",
+                "window_from": row["window_from"], "window_to": row["window_to"], "plan": road}
+        methods = []
+
+        class Res:
+            def json(self):
+                return [have]
+
+        with patch("services.logistics.store._request", side_effect=lambda m, **kw: methods.append(m) or Res()):
+            store.refresh_unfinished([row])
+        self.assertEqual(methods, ["GET"])
+
     def test_wialon_route_uses_the_planned_road_path(self):
         from services.logistics.geo import decode_polyline
 
@@ -333,7 +366,7 @@ class AppTests(unittest.TestCase):
         ])
         with patch.object(app_module.optimized_orders, "process_multiple_excels", return_value=(df, "KDE143E")), \
              patch.object(app_module.optimized_orders, "send_orders_and_create_route") as send, \
-             patch("services.logistics.plan._road_legs", side_effect=RuntimeError("offline")):
+             patch("services.logistics.plan.road_legs", side_effect=RuntimeError("offline")):
             r = self.client.post(
                 "/api/logistics/plan-preview",
                 data={

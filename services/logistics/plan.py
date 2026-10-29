@@ -35,7 +35,7 @@ def _osrm_part(pts):
     return legs, geometry
 
 
-def _road_legs(pts):
+def road_legs(pts):
     legs, geometry = [], []
     for i in range(0, len(pts) - 1, CHUNK - 1):
         part_legs, part_geom = _osrm_part(pts[i : i + CHUNK])
@@ -63,7 +63,7 @@ def build_plan(stops, depot, start: int, end: int, use_road=True) -> dict:
     if len(pts) >= 2:
         if use_road:
             try:
-                road, geom = _road_legs(pts)
+                road, geom = road_legs(pts)
                 if len(road) == len(pts) - 1:
                     legs, geometry, routing = road, geom, "osrm"
             except Exception as exc:

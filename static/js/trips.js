@@ -523,7 +523,13 @@ function initDrawer(onChanged) {
           .join('')}${p.outOfOrder ? `<span class="warn">${p.outOfOrder} out of order</span>` : ''}</div></div>`
       : '';
     const routing =
-      plan.routing === 'osrm' ? 'Road routing' : plan.routing === 'wialon_road' ? 'Wialon road plan' : plan.routing === 'wialon' ? 'Wialon plan' : 'Straight line';
+      plan.routing === 'osrm' || plan.routing === 'wialon_osrm'
+        ? 'Road routing'
+        : plan.routing === 'wialon_road'
+          ? 'Wialon road plan'
+          : plan.routing === 'wialon'
+            ? 'Wialon plan'
+            : 'Straight line';
     const stopRows = plan.stops
       .map((s) => {
         const v = visits.get(s.seq);

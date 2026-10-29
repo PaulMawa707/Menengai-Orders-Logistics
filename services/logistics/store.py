@@ -165,6 +165,9 @@ def _same_trip(have, row) -> bool:
     )
 
 
+ROAD_ROUTINGS = ("wialon_road", "wialon_osrm")
+
+
 def _same_path(have, row) -> bool:
     a, b = (have.get("plan") or {}).get("geometry") or [], row["plan"].get("geometry") or []
     return len(a) == len(b) and a[:1] == b[:1] and a[-1:] == b[-1:]
@@ -190,6 +193,10 @@ def refresh_unfinished(rows):
             row = part.get(h["source_key"])
             if not row:
                 continue
+            old = h.get("plan") or {}
+            if row["plan"].get("routing") == "wialon" and old.get("routing") in ROAD_ROUTINGS:
+                # Wialon gave no road path; keep the one already worked out for this trip.
+                row = {**row, "plan": {**row["plan"], "geometry": old.get("geometry"), "routing": old["routing"]}}
             if not h.get("result_at") and not _same_trip(h, row):
                 patch = {k: row[k] for k in ("unit_id", "unit_name", "route_name", "warehouse", "day", "window_from", "window_to", "plan")}
             elif not _same_path(h, row):
@@ -203,6 +210,16 @@ def refresh_unfinished(rows):
                 headers={"Prefer": "return=minimal"},
                 what="Updating a trip from Wialon",
             )
+
+
+def update_plan(trip_id: str, plan: dict):
+    _request(
+        "PATCH",
+        params={"id": f"eq.{trip_id}"},
+        json={"plan": plan},
+        headers={"Prefer": "return=minimal"},
+        what="Saving the planned road",
+    )
 
 
 def save_result(trip_id: str, result: dict):

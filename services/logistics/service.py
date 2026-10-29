@@ -8,7 +8,7 @@ from services import assets
 
 from . import store, wialon
 from .geo import decode_polyline, thin
-from .plan import RULES, build_plan
+from .plan import RULES, road_legs, build_plan
 from .track import LEAD_S, TAIL_S, TRIP_STATES, progress_of, track_plan, trip_state
 
 TZ_S = 3 * 3600
@@ -346,9 +346,32 @@ def list_page(token, resource_id, day_from, day_to, q="", state=None, page=1, pa
     return {"rows": summaries, "total": len(idx), "page": page, "pageSize": page_size, "counts": counts, "now": now, "tz": TZ_S}
 
 
+def road_plan(row):
+    """A Wialon route without a planned road path gets the road through its stops, in Wialon's order; kept once found."""
+    plan = row["plan"]
+    if plan.get("routing") != "wialon" or len(plan.get("stops") or []) < 1:
+        return plan
+    depot = plan.get("depot")
+    pts = ([depot] if depot else []) + plan["stops"] + ([depot] if depot else [])
+    try:
+        _legs, geometry = road_legs([{"lat": p["lat"], "lon": p["lon"]} for p in pts])
+    except Exception as exc:
+        print(f"[logistics] could not route the planned road: {exc}")
+        return plan
+    if len(geometry) < 2:
+        return plan
+    road = {**plan, "geometry": thin([[round(y, 5), round(x, 5)] for y, x in geometry], MAX_GEOMETRY), "routing": "wialon_osrm"}
+    try:
+        store.update_plan(row["id"], road)
+    except Exception as exc:
+        print(f"[logistics] could not keep the planned road: {exc}")
+    return road
+
+
 def trip_detail(token, resource_id, trip_id):
     now = int(time.time())
     row = store.get_trip(resource_id, trip_id)
+    row["plan"] = road_plan(row)
     tracking = tracking_for(token, row, now)
     return {**to_summary(row, tracking, now), "plan": row["plan"], "tracking": tracking, "now": now, "tz": TZ_S}
 
