@@ -1,3 +1,4 @@
+import re
 import threading
 import time
 from collections import Counter
@@ -313,6 +314,15 @@ def sync_wialon_history(token, resource_id, day_from, day_to, now=None):
 # ---- Tracking and summaries ----
 
 
+AUTO_ROUTE_NAME = re.compile(r"^ROUTE_\d+$")
+
+
+def route_label(row):
+    """Routes Wialon named automatically ("ROUTE_1793025583811") are shown by their vehicle, as Wialon Logistics does."""
+    name = row["route_name"]
+    return row.get("unit_name") or name if AUTO_ROUTE_NAME.match(name.strip()) else name
+
+
 def current_rules(rows):
     """Visit rules (stop radius, lateness) as configured now, also for trips planned before a change."""
     for r in rows:
@@ -345,7 +355,7 @@ def to_summary(row, tracking, now):
     return {
         "id": row["id"],
         "source": row["source"],
-        "routeName": row["route_name"],
+        "routeName": route_label(row),
         "unitId": int(row["unit_id"]),
         "unitName": row["unit_name"],
         "warehouse": row.get("warehouse") or "",

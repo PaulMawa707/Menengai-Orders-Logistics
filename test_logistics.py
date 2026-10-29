@@ -595,6 +595,12 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(r.get_json()["alerts"][0]["kind"], "visit")
 
 
+class RouteLabelTests(unittest.TestCase):
+    def test_automatic_wialon_names_show_the_vehicle(self):
+        self.assertEqual(service.route_label({"route_name": "ROUTE_1793025583811", "unit_name": "FG - Menengai - KCW 193E"}), "FG - Menengai - KCW 193E")
+        self.assertEqual(service.route_label({"route_name": "VS - Menengai - KDE 143E - 2026-10-28 16:34", "unit_name": "x"}), "VS - Menengai - KDE 143E - 2026-10-28 16:34")
+
+
 class MapTileTests(unittest.TestCase):
     def test_gurtam_tiles_for_the_wialon_user(self):
         from services.logistics import wialon
