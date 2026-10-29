@@ -650,7 +650,7 @@ function initDrawer(onChanged) {
         <span>W is the warehouse</span>
       </div>
       <div class="card">
-        <div class="card-head"><b>Stops</b><span class="sub">Visited within ${fmtNum(plan.rules.stopRadiusM)} m · late after ETA + ${plan.rules.lateMin} min</span></div>
+        <div class="card-head"><b>Stops</b><span class="sub">Visited when stopped ${plan.rules.minStopMin ? `${fmtNum(plan.rules.minStopMin)}+ min ` : ''}within ${fmtNum(plan.rules.stopRadiusM)} m · late after ETA + ${plan.rules.lateMin} min</span></div>
         <div class="table-wrap"><table class="stops-table"><thead><tr><th class="num">#</th><th>Stop</th><th class="right">Planned</th><th class="right">Actual</th><th>Status</th></tr></thead><tbody>${allRows}</tbody></table></div>
       </div>
       <p class="data-meta">${d.source === 'upload' ? `Uploaded by ${esc(d.createdBy || '—')}${d.files ? ` from ${esc(d.files)}` : ''}. ` : 'Read from Wialon Logistics. '}Progress is measured from the vehicle's positions in Wialon. Updated ${fmtTime(d.now, tz)} EAT.</p>`;

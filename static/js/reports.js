@@ -306,7 +306,7 @@ function initReports({ openTrip }) {
             )}${th('start', 'Start est. / actual', 'center')}${th('return', 'Return est. / actual', 'center')}${th('duration', 'Duration est. / actual', 'right')}${th('km', 'km est. / actual', 'right')}${th('state', 'State')}<th></th></tr></thead><tbody>${body}</tbody></table></div>`
           : `<div class="empty"><b>No trips match</b><p>${d.trips.length ? 'Try another orders filter or clear the search.' : 'No trips for these days. Dispatched uploads and Wialon Logistics routes appear here.'}</p></div>`
       }</div>
-      <p class="data-meta">Visited in time: the vehicle reached the order no later than its ETA plus the allowed lateness. Not visited: it never came within the stop radius during the trip window. Actual times and mileage come from Wialon positions. Loaded in ${fmtNum(d.ms)} ms.</p>`;
+      <p class="data-meta">Visited in time: the vehicle reached the order no later than its ETA plus the allowed lateness. A visit needs the vehicle to stop near the order (driving past does not count). Not visited: it did not stop there during the trip window. Actual times and mileage come from Wialon positions. Loaded in ${fmtNum(d.ms)} ms.</p>`;
 
     const search = el.results.querySelector('#rep-search');
     search.addEventListener('input', () => {

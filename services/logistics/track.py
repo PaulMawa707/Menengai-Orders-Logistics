@@ -19,14 +19,18 @@ TRIP_STATES = ["in_progress", "scheduled", "completed", "ended"]
 
 
 def _accepts(seg, rules) -> bool:
-    if not rules["completeOnStop"] and not rules["completeOnLeave"]:
+    """A pass through the stop's circle is a visit when the vehicle stopped there long enough (driving past is not)."""
+    if rules.get("completeOnLeave"):
         return True
-    return (rules["completeOnStop"] and (seg["stopped"] or seg["to"] - seg["from"] >= 60)) or rules["completeOnLeave"]
+    if not rules.get("completeOnStop", True):
+        return True
+    return seg["stoppedS"] >= rules.get("minStopMin", 0) * 60
 
 
 def _first_visit(pts, lat, lon, after, rules):
     """First pass through the stop's circle at or after `after` that satisfies the visit rule."""
     r = rules["stopRadiusM"]
+    moving = rules["movingKmh"]
     # Rough bounding box so most points skip the distance calculation.
     d_lat = (r * 3) / 111_320
     d_lon = d_lat / max(0.1, math.cos(math.radians(lat)))
@@ -35,28 +39,30 @@ def _first_visit(pts, lat, lon, after, rules):
     for t, y, x, s in pts:
         if t < after:
             continue
-        if abs(y - lat) > d_lat or abs(x - lon) > d_lon:
-            if seg:
-                if _accepts(seg, rules):
-                    return seg, closest
-                seg = None
-            continue
-        d = dist_m(lat, lon, y, x)
-        if closest is None or d < closest:
-            closest = d
-        if d <= r:
+        inside = False
+        if abs(y - lat) <= d_lat and abs(x - lon) <= d_lon:
+            d = dist_m(lat, lon, y, x)
+            if closest is None or d < closest:
+                closest = d
+            inside = d <= r
+        if inside:
             if not seg:
-                seg = {"from": t, "to": t, "stopped": False, "open": True}
-            seg["to"] = t
-            if s <= rules["movingKmh"]:
-                seg["stopped"] = True
+                seg = {"from": t, "to": t, "stoppedS": 0, "open": True, "slow": s <= moving}
+            else:
+                # Parked vehicles report rarely: the time since a slow position inside counts as stopped.
+                if seg["slow"]:
+                    seg["stoppedS"] += t - seg["to"]
+                seg["to"] = t
+                seg["slow"] = s <= moving
         elif seg:
             seg["open"] = False
             if _accepts(seg, rules):
                 return seg, closest
             seg = None
-    # Still inside the radius at the latest position: the vehicle is at the stop now.
-    return seg, closest
+    # Still inside the circle at the latest position: a visit if it stopped long enough or is standing there now.
+    if seg and (_accepts(seg, rules) or seg["slow"]):
+        return seg, closest
+    return None, closest
 
 
 def track_plan(plan: dict, pts: list, now: int) -> dict:

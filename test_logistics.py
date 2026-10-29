@@ -48,6 +48,7 @@ class TrackTests(unittest.TestCase):
             (a["eta"] + 600, a["lat"] - 0.005, a["lon"], 40),
             # B is reached two hours after its ETA.
             (b["eta"] + 7200, b["lat"], b["lon"], 0),
+            (b["eta"] + 7380, b["lat"], b["lon"], 0),
             (b["eta"] + 7400, b["lat"] - 0.005, b["lon"], 40),
             (END - 60, DEPOT["lat"], DEPOT["lon"], 0),
         ]
@@ -75,6 +76,27 @@ class TrackTests(unittest.TestCase):
         tracking = track_plan(self.plan, pts, START + 9000)
         self.assertEqual(tracking["startedAt"], START + 600)
         self.assertGreater(tracking["km"], 10)
+
+    def test_driving_past_a_stop_is_not_a_visit(self):
+        a = self.plan["stops"][0]
+        pts = [
+            # Drives through the circle at speed, then comes back and stops for 20 minutes.
+            (a["eta"] - 600, a["lat"] + 0.001, a["lon"], 45),
+            (a["eta"] - 570, a["lat"] - 0.001, a["lon"], 45),
+            (a["eta"] - 400, a["lat"] - 0.01, a["lon"], 50),
+            (a["eta"] + 300, a["lat"], a["lon"], 3),
+            (a["eta"] + 1500, a["lat"], a["lon"], 0),
+            (a["eta"] + 1560, a["lat"] - 0.01, a["lon"], 40),
+        ]
+        v = track_plan(self.plan, pts, END + 60)["visits"][0]
+        self.assertEqual((v["arrivedAt"], v["leftAt"]), (a["eta"] + 300, a["eta"] + 1500))
+
+    def test_a_parked_vehicle_reporting_rarely_counts_as_stopped(self):
+        a = self.plan["stops"][0]
+        pts = [(a["eta"], a["lat"], a["lon"], 0), (a["eta"] + 1800, a["lat"], a["lon"], 12), (a["eta"] + 1900, a["lat"] - 0.01, a["lon"], 40)]
+        v = track_plan(self.plan, pts, END + 60)["visits"][0]
+        self.assertEqual(v["status"], "on_time")
+        self.assertEqual(v["leftAt"], a["eta"] + 1800)
 
     def test_a_move_in_and_out_of_the_yard_is_not_a_return(self):
         pts = [
@@ -421,7 +443,7 @@ class CountTests(unittest.TestCase):
         }
         # Every stop visited during the window: the clock alone says on the road, positions say completed.
         pts = [(s["eta"], s["lat"], s["lon"], 0) for s in plan["stops"]]
-        pts = [(p[0] + k, p[1], p[2], 0) for p in pts for k in (0, 90)]
+        pts = [(p[0] + k, p[1], p[2], 0) for p in pts for k in (0, 150)]
         with patch("services.logistics.service.sync_wialon_history"), \
              patch("services.logistics.service.store.list_trips", return_value=[row]), \
              patch("services.logistics.service.wialon.unit_track", return_value=pts), \

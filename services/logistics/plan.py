@@ -19,7 +19,9 @@ RULES = {
     "advanceMin": 0,
     "strictSequence": False,
     "completeOnStop": True,
-    "completeOnLeave": True,
+    # Driving through a stop's circle does not count; the vehicle has to stop there for minStopMin.
+    "completeOnLeave": False,
+    "minStopMin": float(os.getenv("LOGISTICS_MIN_STOP_MIN", "2")),
     "movingKmh": 5,
 }
 
