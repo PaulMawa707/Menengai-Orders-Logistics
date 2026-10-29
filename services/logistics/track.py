@@ -107,11 +107,14 @@ def track_plan(plan: dict, pts: list, now: int) -> dict:
             i = next((k for k in range(max(1, first), len(pts)) if not in_depot(pts[k]) and in_depot(pts[k - 1])), -1)
         if i >= 0:
             started_at = pts[i][0]
-            last_visit = max([started_at] + [v["leftAt"] or v["arrivedAt"] or 0 for v in visits])
-            for p in pts[i + 1 :]:
-                if p[0] > last_visit and in_depot(p):
-                    returned_at = p[0]
-                    break
+            visited = [v["leftAt"] or v["arrivedAt"] for v in visits if v["arrivedAt"]]
+            # Back at the depot only after delivering: a quick move out of the yard and in again is not a return.
+            if visited:
+                last_visit = max([started_at] + visited)
+                for p in pts[i + 1 :]:
+                    if p[0] > last_visit and in_depot(p):
+                        returned_at = p[0]
+                        break
     else:
         started_at = next((p[0] for p in pts if p[0] >= start and p[3] > rules["movingKmh"]), None)
 

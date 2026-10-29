@@ -76,6 +76,16 @@ class TrackTests(unittest.TestCase):
         self.assertEqual(tracking["startedAt"], START + 600)
         self.assertGreater(tracking["km"], 10)
 
+    def test_a_move_in_and_out_of_the_yard_is_not_a_return(self):
+        pts = [
+            (START - 60, DEPOT["lat"], DEPOT["lon"], 0),
+            (START + 60, DEPOT["lat"] - 0.005, DEPOT["lon"], 20),
+            (START + 180, DEPOT["lat"], DEPOT["lon"], 0),
+        ]
+        tracking = track_plan(self.plan, pts, START + 600)
+        self.assertEqual(tracking["startedAt"], START + 60)
+        self.assertIsNone(tracking["returnedAt"])
+
     def test_states_from_the_clock(self):
         self.assertEqual(trip_state(START, END, START - 7200, None), "scheduled")
         self.assertEqual(trip_state(START, END, START + 60, None), "in_progress")
@@ -583,6 +593,19 @@ class AlertTests(unittest.TestCase):
              patch("services.logistics.service.alerts", return_value=payload):
             r = client.get("/api/logistics/alerts")
         self.assertEqual(r.get_json()["alerts"][0]["kind"], "visit")
+
+
+class MapTileTests(unittest.TestCase):
+    def test_gurtam_tiles_for_the_wialon_user(self):
+        from services.logistics import wialon
+
+        wialon._tiles.clear()
+        login = {"eid": "sid", "user": {"id": 27615568}, "gis_render": "", "base_url": "https://hst-api.wialon.com"}
+        with patch("services.logistics.wialon.call", return_value=login) as call:
+            url = wialon.map_tiles("token-12345678")
+            self.assertEqual(url, "https://render-maps.wialon.com/hst-api.wialon.com/gis_render/{x}_{y}_{z}/27615568/tile.png")
+            wialon.map_tiles("token-12345678")
+        self.assertEqual(call.call_count, 1)
 
 
 class AssetNameTests(unittest.TestCase):

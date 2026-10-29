@@ -135,6 +135,24 @@ def finished_routes(token, resource_id, ival_from, ival_to):
     return _with_session(token, run)
 
 
+MAPS_URL = "https://render-maps.wialon.com"
+_tiles = {}
+
+
+def map_tiles(token):
+    """Gurtam Maps tile address for the token's Wialon user (Leaflet template, zoom counted down from 17)."""
+    hit = _tiles.get(token[-8:])
+    if hit and hit[0] > time.time():
+        return hit[1]
+    r = call("token/login", {"token": token}, timeout=30)
+    gis = (r.get("gis_render") or "").rstrip("/")
+    host = (r.get("base_url") or BASE_URL).split("//", 1)[-1].split("/", 1)[0]
+    base = gis or f"{MAPS_URL}/{host}"
+    url = f"{base}/gis_render/{{x}}_{{y}}_{{z}}/{r['user']['id']}/tile.png"
+    _tiles[token[-8:]] = (time.time() + 12 * 3600, url)
+    return url
+
+
 LOGISTICS_ROUTES_URL = "https://logistics.wialon.com/api/routes"
 
 

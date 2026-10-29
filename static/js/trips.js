@@ -81,6 +81,60 @@ function initTabs(trips, reports) {
   return { show };
 }
 
+// Stop rows are keyed by sequence number; the warehouse rows by "W".
+const rowKey = (v) => (v === 'W' ? 'W' : Number(v));
+
+// ---- Maps ----
+
+const GURTAM_ATTRIBUTION = '&copy; <a href="https://gurtam.com/en/gurtam-maps" target="_blank" rel="noreferrer">Gurtam Maps</a> &copy; OpenStreetMap contributors';
+
+/** A Leaflet map on Gurtam Maps (OpenStreetMap when Wialon's renderer is unavailable), with a maximize button. */
+function createMap(host) {
+  const tiles = document.body.dataset.mapTiles;
+  const map = L.map(host, { scrollWheelZoom: false, maxZoom: tiles ? 17 : 19, minZoom: 2 });
+  if (tiles) L.tileLayer(tiles, { attribution: GURTAM_ATTRIBUTION, maxZoom: 17, minZoom: 2, zoomReverse: true }).addTo(map);
+  else L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
+  addMaximize(map, host);
+  return map;
+}
+
+function addMaximize(map, host) {
+  let button;
+  const set = (on) => {
+    host.classList.toggle('map-max', on);
+    document.body.classList.toggle('map-maxed', on);
+    map.scrollWheelZoom[on ? 'enable' : 'disable']();
+    button.textContent = on ? '✕' : '⛶';
+    button.title = on ? 'Restore the map (Esc)' : 'Maximize the map';
+    setTimeout(() => map.invalidateSize(), 60);
+  };
+  const Control = L.Control.extend({
+    options: { position: 'topright' },
+    onAdd() {
+      button = L.DomUtil.create('button', 'map-max-btn');
+      button.type = 'button';
+      button.textContent = '⛶';
+      button.title = 'Maximize the map';
+      L.DomEvent.disableClickPropagation(button);
+      L.DomEvent.on(button, 'click', () => set(!host.classList.contains('map-max')));
+      return button;
+    },
+  });
+  map.addControl(new Control());
+  const onKey = (e) => {
+    if (e.key === 'Escape' && host.classList.contains('map-max')) {
+      e.stopImmediatePropagation();
+      set(false);
+    }
+  };
+  map.setMaximized = set;
+  document.addEventListener('keydown', onKey, true);
+  map.on('unload', () => {
+    document.removeEventListener('keydown', onKey, true);
+    document.body.classList.remove('map-maxed');
+  });
+}
+
 // ---- Plan a trip ----
 
 const nextDay = (day) => new Date(Date.parse(`${day}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
@@ -90,8 +144,7 @@ function drawPlanMap(host, plan) {
     if (host) host.innerHTML = '<div class="empty"><p>The map could not be loaded.</p></div>';
     return null;
   }
-  const map = L.map(host, { scrollWheelZoom: false });
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
+  const map = createMap(host);
   const bounds = [];
   if (plan.geometry?.length) {
     L.polyline(plan.geometry, { color: '#6366f1', weight: 3, opacity: 0.7, dashArray: '6 6' }).addTo(map);
@@ -189,7 +242,15 @@ function initPlanTrip({ onDispatched }) {
       </div>
       <div class="trip-map plan-map" id="plan-map"></div>
       <div class="card"><div class="card-head"><b>Schedule</b><span class="sub">${esc(d.asset.name)} · from ${esc(p.depot?.name || '')} at ${fmtTime(p.start, tz)}</span></div>
-        <div class="table-wrap plan-stops"><table class="stops-table"><thead><tr><th class="num">#</th><th>Stop</th><th class="right">Leg</th><th class="right">ETA</th></tr></thead><tbody>${stops}</tbody></table></div>
+        <div class="table-wrap plan-stops"><table class="stops-table"><thead><tr><th class="num">#</th><th>Stop</th><th class="right">Leg</th><th class="right">ETA</th></tr></thead><tbody>${
+          p.depot
+            ? `<tr class="depot-row"><td class="num"><span class="depot-chip">W</span></td><td><div class="strong">Leave ${esc(p.depot.name)}</div></td><td></td><td class="right nowrap strong">${fmtTime(p.start, tz)}</td></tr>`
+            : ''
+        }${stops}${
+          p.depot
+            ? `<tr class="depot-row"><td class="num"><span class="depot-chip">W</span></td><td><div class="strong">Back at ${esc(p.depot.name)}</div></td><td></td><td class="right nowrap strong">${fmtTime(p.returnAt, tz)}</td></tr>`
+            : ''
+        }</tbody></table></div>
       </div>`;
     map = drawPlanMap(document.getElementById('plan-map'), p);
   }
@@ -550,6 +611,23 @@ function initDrawer(onChanged) {
           <td class="right nowrap">${fmtTime(s.eta, tz)}</td><td class="right nowrap">${arrived}</td><td>${status}</td></tr>`;
       })
       .join('');
+    const depotRow = (which) => {
+      if (!plan.depot) return '';
+      const leaving = which === 'leave';
+      const planned = leaving ? plan.start : plan.returnAt;
+      const actual = leaving ? t?.startedAt : t?.returnedAt;
+      const diff = actual ? Math.round((actual - planned) / 60) : null;
+      const over = d.state === 'completed' || d.state === 'ended';
+      const status = actual
+        ? badge({ label: leaving ? 'Left the warehouse' : 'Back at the warehouse', cls: 'completed' })
+        : `<span class="sub ${over ? 'warn' : ''}">${leaving ? (over ? 'Departure not seen' : 'Not left yet') : over ? 'Return not seen' : 'Not back yet'}</span>`;
+      return `<tr data-seq="W" class="depot-row"><td class="num"><span class="depot-chip">W</span></td>
+        <td><div class="strong">${leaving ? 'Leave' : 'Return to'} ${esc(plan.depot.name)}</div><div class="sub">${leaving ? 'Departure from the warehouse' : 'Arrival back at the warehouse'}</div></td>
+        <td class="right nowrap">${fmtTime(planned, tz)}</td>
+        <td class="right nowrap">${actual ? `${fmtTime(actual, tz)}${diff !== null && Math.abs(diff) >= 1 ? `<div class="sub ${diff > 0 ? 'warn' : 'info'}">${diff > 0 ? '+' : ''}${diff} min</div>` : ''}` : '<span class="sub">—</span>'}</td>
+        <td>${status}</td></tr>`;
+    };
+    const allRows = depotRow('leave') + stopRows + depotRow('return');
     body.innerHTML = `
       <div class="drawer-actions">
         ${badge(TRIP_META[d.state])}
@@ -573,11 +651,11 @@ function initDrawer(onChanged) {
       </div>
       <div class="card">
         <div class="card-head"><b>Stops</b><span class="sub">Visited within ${fmtNum(plan.rules.stopRadiusM)} m · late after ETA + ${plan.rules.lateMin} min</span></div>
-        <div class="table-wrap"><table class="stops-table"><thead><tr><th class="num">#</th><th>Stop</th><th class="right">ETA</th><th class="right">Arrived</th><th>Status</th></tr></thead><tbody>${stopRows}</tbody></table></div>
+        <div class="table-wrap"><table class="stops-table"><thead><tr><th class="num">#</th><th>Stop</th><th class="right">Planned</th><th class="right">Actual</th><th>Status</th></tr></thead><tbody>${allRows}</tbody></table></div>
       </div>
       <p class="data-meta">${d.source === 'upload' ? `Uploaded by ${esc(d.createdBy || '—')}${d.files ? ` from ${esc(d.files)}` : ''}. ` : 'Read from Wialon Logistics. '}Progress is measured from the vehicle's positions in Wialon. Updated ${fmtTime(d.now, tz)} EAT.</p>`;
     body.querySelector('#trip-remove').addEventListener('click', remove);
-    body.querySelectorAll('.stops-table tbody tr').forEach((tr) => tr.addEventListener('click', () => select(Number(tr.dataset.seq))));
+    body.querySelectorAll('.stops-table tbody tr').forEach((tr) => tr.addEventListener('click', () => select(rowKey(tr.dataset.seq))));
     drawMap(d, visits);
   }
 
@@ -589,11 +667,12 @@ function initDrawer(onChanged) {
     }
     const center = st.map?.getCenter();
     const zoom = st.map?.getZoom();
+    const wasMax = !!st.map?.getContainer().classList.contains('map-max');
     if (st.map) st.map.remove();
-    const map = L.map(host, { scrollWheelZoom: false });
+    const map = createMap(host);
+    if (wasMax) map.setMaximized(true);
     st.map = map;
     st.markers = new Map();
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
     const bounds = [];
     if (d.plan.geometry?.length) {
       L.polyline(d.plan.geometry, { color: '#6366f1', weight: 3, opacity: 0.6, dashArray: '6 6' }).addTo(map);
@@ -605,9 +684,11 @@ function initDrawer(onChanged) {
     }
     if (d.plan.depot) {
       const dep = d.plan.depot;
-      L.marker([dep.lat, dep.lon], { icon: L.divIcon({ className: 'pin depot', html: 'W', iconSize: [26, 26] }) })
+      const m = L.marker([dep.lat, dep.lon], { icon: L.divIcon({ className: 'pin depot', html: 'W', iconSize: [26, 26] }) })
         .bindTooltip(esc(dep.name))
+        .on('click', () => select('W'))
         .addTo(map);
+      st.markers.set('W', m);
       bounds.push([dep.lat, dep.lon]);
     }
     d.plan.stops.forEach((s) => {
@@ -637,7 +718,7 @@ function initDrawer(onChanged) {
   }
 
   function highlight(seq) {
-    body.querySelectorAll('.stops-table tbody tr').forEach((tr) => tr.classList.toggle('selected', Number(tr.dataset.seq) === seq));
+    body.querySelectorAll('.stops-table tbody tr').forEach((tr) => tr.classList.toggle('selected', rowKey(tr.dataset.seq) === seq));
   }
 
   function select(seq) {

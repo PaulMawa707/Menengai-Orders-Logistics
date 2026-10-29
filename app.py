@@ -22,7 +22,7 @@ from flask import (
 
 from config import BASE_DIR, config, verify_login
 from services import assets, common, optimized_orders
-from services.logistics import service as logistics, store as trip_store
+from services.logistics import service as logistics, store as trip_store, wialon as logistics_wialon
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = config.SECRET_KEY
@@ -88,6 +88,11 @@ def logout():
 @app.route("/dashboard")
 @login_required
 def dashboard():
+    try:
+        map_tiles = logistics_wialon.map_tiles(config.WIALON_TOKEN)
+    except Exception as exc:
+        print(f"[logistics] Gurtam Maps unavailable, using OpenStreetMap: {exc}")
+        map_tiles = ""
     return render_template(
         "dashboard.html",
         title="Menengai Orders Logistics",
@@ -96,6 +101,7 @@ def dashboard():
         ct_logo_exists=(BASE_DIR / "static" / "img" / "CT-Logo.jpg").exists(),
         bg_exists=(BASE_DIR / "static" / "img" / "bg.jpg").exists(),
         controltech_url=config.CONTROLTECH_URL,
+        map_tiles=map_tiles,
     )
 
 

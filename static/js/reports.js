@@ -279,7 +279,7 @@ function initReports({ openTrip }) {
           <td>${badge(TRIP_META[trip.state])}</td>
           <td><button type="button" class="icon-btn" data-map="${esc(trip.id)}" title="Planned and actual route on the map" aria-label="Planned and actual route on the map">🗺</button></td>
         </tr>`;
-        return open ? main + `<tr class="orders-row"><td colspan="12">${ordersTable(orders, tz)}</td></tr>` : main;
+        return open ? main + `<tr class="orders-row"><td colspan="12">${ordersTable(orders, tz, trip)}</td></tr>` : main;
       })
       .join('');
 
@@ -341,9 +341,27 @@ function initReports({ openTrip }) {
     );
   }
 
-  function ordersTable(orders, tz) {
+  function ordersTable(orders, tz, trip) {
     if (!orders.length) return '<div class="sub orders-empty">No orders match the orders filter.</div>';
     const t = (ts) => (ts ? fmtTime(ts, tz) : '—');
+    const dev = (actual, planned) => (actual ? Math.round((actual - planned) / 60) : null);
+    const depot = (leaving) => {
+      if (el.orders.value !== 'all' || !trip.warehouse) return '';
+      const planned = leaving ? trip.planned.start : trip.planned.returnAt;
+      const actual = leaving ? trip.actual?.startedAt : trip.actual?.returnedAt;
+      const d = dev(actual, planned);
+      const label = actual ? badge({ label: leaving ? 'Left' : 'Back', cls: 'completed' }) : `<span class="sub">${leaving ? 'Departure not seen' : 'Return not seen'}</span>`;
+      const times = `${t(planned)} <span class="sub">/</span> ${t(actual)}`;
+      return `<tr class="depot-row">
+          <td class="num"><span class="depot-chip">W</span></td>
+          <td><div class="strong">${leaving ? 'Leave' : 'Return to'} ${esc(trip.warehouse)}</div><div class="sub">${leaving ? 'Departure from the warehouse' : 'Arrival back at the warehouse'}</div></td>
+          <td>${label}</td>
+          <td class="center nowrap">${leaving ? '' : times}</td>
+          <td class="right nowrap ${d > 0 ? 'warn' : 'sub'}">${devText(d)}</td>
+          <td class="center nowrap">${leaving ? times : ''}</td>
+          <td></td><td></td><td></td>
+        </tr>`;
+    };
     const rows = orders
       .map((s) => {
         const svc = serviceMin(s);
@@ -363,7 +381,7 @@ function initReports({ openTrip }) {
         </tr>`;
       })
       .join('');
-    return `<table class="orders-table"><thead><tr><th class="num">#</th><th>Order</th><th>Status</th><th class="center">Arrival est. / actual</th><th class="right">Deviation</th><th class="center">Departure est. / actual</th><th class="right">Service est. / actual</th><th class="right">Est. km</th><th class="right">Load</th></tr></thead><tbody>${rows}</tbody></table>`;
+    return `<table class="orders-table"><thead><tr><th class="num">#</th><th>Order</th><th>Status</th><th class="center">Arrival est. / actual</th><th class="right">Deviation</th><th class="center">Departure est. / actual</th><th class="right">Service est. / actual</th><th class="right">Est. km</th><th class="right">Load</th></tr></thead><tbody>${depot(true)}${rows}${depot(false)}</tbody></table>`;
   }
 
   el.run.addEventListener('click', execute);

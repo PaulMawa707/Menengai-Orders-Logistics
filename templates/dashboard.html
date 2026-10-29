@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}" />
 </head>
-<body data-active-tab="optimized"{% if bg_exists %} class="has-bg"{% endif %}>
+<body data-active-tab="optimized" data-map-tiles="{{ map_tiles }}"{% if bg_exists %} class="has-bg"{% endif %}>
   <header class="topbar">
     <div class="topbar-brand">
       {% if logo_exists %}
