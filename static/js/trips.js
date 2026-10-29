@@ -541,7 +541,7 @@ function initDrawer(onChanged) {
           arrived = `<span class="sub" title="Closest the vehicle came">${v.closestM >= 1000 ? `${fmtNum(v.closestM / 1000, 1)} km` : `${v.closestM} m`} away</span>`;
         }
         const status = v
-          ? `${badge(VISIT_META[v.status])}${v.outOfOrder ? ' <span class="sub warn">out of order</span>' : ''}${v.leftAt ? ` <span class="sub">left ${fmtTime(v.leftAt, tz)}</span>` : ''}`
+          ? `${badge(VISIT_META[v.status])}${v.wialon ? ' <span class="sub" title="Marked fulfilled in Wialon Logistics">fulfilled in Wialon</span>' : ''}${v.outOfOrder ? ' <span class="sub warn">out of order</span>' : ''}${v.leftAt ? ` <span class="sub">left ${fmtTime(v.leftAt, tz)}</span>` : ''}`
           : '<span class="sub">Planned</span>';
         const detail = [s.location || `${s.lat.toFixed(5)}, ${s.lon.toFixed(5)}`, s.legKm > 0 ? `${fmtNum(s.legKm, 1)} km` : '', s.weightKg ? `${fmtNum(s.weightKg)} kg` : '']
           .filter(Boolean)
@@ -707,6 +707,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (id) drawer.open(id);
   };
   const plan = initPlanTrip({ onDispatched: openTrip });
+  initAlerts({ openTrip });
   document.getElementById('plan-open').addEventListener('click', () => plan.open(trips.day()));
   window.menengaiTrips = { openTrip };
 });

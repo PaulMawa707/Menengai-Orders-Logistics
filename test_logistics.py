@@ -467,6 +467,99 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(r.status_code, 400)
 
 
+class WialonFulfilmentTests(unittest.TestCase):
+    def setUp(self):
+        self.plan = build_plan(STOPS, DEPOT, START, END, use_road=False)
+
+    def _gps_missed_all(self):
+        return track_plan(self.plan, [], END + 60)
+
+    def test_orders_completed_in_wialon_count_as_visited(self):
+        a, b, c = self.plan["stops"]
+        a.update(ws=2, wat=a["eta"] + 120, wleft=a["eta"] + 600)
+        b.update(ws=3, wat=b["eta"] + 7200, wleft=b["eta"] + 7300)
+        c.update(ws=1)
+        self.plan["wStart"], self.plan["wReturn"] = START + 300, END - 60
+        t = service.with_wialon(self.plan, self._gps_missed_all(), END + 60)
+        self.assertEqual([v["status"] for v in t["visits"]], ["on_time", "late", "missed"])
+        self.assertTrue(t["visits"][0]["wialon"])
+        self.assertEqual(t["visits"][0]["arrivedAt"], a["eta"] + 120)
+        self.assertEqual((t["startedAt"], t["returnedAt"]), (START + 300, END - 60))
+
+    def test_route_fulfilled_in_wialon_is_completed(self):
+        for s in self.plan["stops"]:
+            s.update(ws=2, wat=s["eta"], wleft=s["eta"] + 60)
+        t = service.with_wialon(self.plan, self._gps_missed_all(), END + 60)
+        self.assertEqual(trip_state(START, END, END + 60, t), "completed")
+        # Even before positions were loaded.
+        t = service.with_wialon(self.plan, None, END + 60)
+        self.assertEqual(trip_state(START, END, END + 60, t), "completed")
+
+    def test_gps_visit_is_kept(self):
+        a = self.plan["stops"][0]
+        a.update(ws=2, wat=a["eta"] + 999)
+        gps = self._gps_missed_all()
+        gps["visits"][0].update(status="late", arrivedAt=a["eta"] + 5000)
+        t = service.with_wialon(self.plan, gps, END + 60)
+        self.assertEqual(t["visits"][0]["status"], "late")
+        self.assertNotIn("wialon", t["visits"][0])
+
+    def test_no_wialon_data_leaves_tracking_alone(self):
+        self.assertIsNone(service.with_wialon(self.plan, None, END + 60))
+
+    def test_uploads_take_wialon_status_by_position(self):
+        wialon = {**self.plan, "stops": [{**s, "ws": 2, "wat": 111, "wleft": 222} for s in self.plan["stops"]], "wReturn": 333}
+        merged = store.with_status(self.plan, wialon)
+        self.assertEqual([s["ws"] for s in merged["stops"]], [2, 2, 2])
+        self.assertEqual(merged["stops"][0]["eta"], self.plan["stops"][0]["eta"])
+        self.assertEqual(merged["wReturn"], 333)
+
+
+class AlertTests(unittest.TestCase):
+    def test_trip_events(self):
+        plan = build_plan(STOPS, DEPOT, START, END, use_road=False)
+        a, b, c = plan["stops"]
+        row = {"id": "t1", "plan": plan, "route_name": "R1", "unit_id": 27532302, "unit_name": "VS - Menengai - KDE 143E", "source": "upload",
+               "window_from": store._iso(START), "window_to": store._iso(END), "day": service.local_day(START)}
+        tracking = {
+            "visits": [
+                {"seq": 1, "status": "on_time", "arrivedAt": a["eta"] + 60, "leftAt": None, "closestM": 5, "outOfOrder": False},
+                {"seq": 2, "status": "late", "arrivedAt": b["eta"] + 3600, "leftAt": None, "closestM": 5, "outOfOrder": False, "wialon": True},
+                {"seq": 3, "status": "missed", "arrivedAt": None, "leftAt": None, "closestM": 900, "outOfOrder": False},
+            ],
+            "startedAt": START + 100, "returnedAt": None, "km": 30, "lastPos": None, "path": [],
+        }
+        now = END + 7200
+        s = service.to_summary(row, tracking, now)
+        events = {e["kind"]: e for e in service.trip_alerts(row, tracking, s, now)}
+        self.assertEqual(set(events), {"visit", "late", "missed", "ended"})
+        self.assertIn("fulfilled in Wialon", events["late"]["detail"])
+        self.assertEqual(events["missed"]["at"], END)
+        self.assertTrue(all(e["tripId"] == "t1" for e in events.values()))
+
+    def test_not_started_after_half_an_hour(self):
+        plan = build_plan(STOPS, DEPOT, START, END, use_road=False)
+        row = {"id": "t2", "plan": plan, "route_name": "R2", "unit_id": 1, "unit_name": "T", "source": "upload",
+               "window_from": store._iso(START), "window_to": store._iso(END), "day": "2026-10-29"}
+        now = START + 3600
+        tracking = track_plan(plan, [], now)
+        s = service.to_summary(row, tracking, now)
+        kinds = [e["kind"] for e in service.trip_alerts(row, tracking, s, now)]
+        self.assertEqual(kinds, ["not_started"])
+
+    def test_alerts_endpoint(self):
+        from app import app
+
+        client = app.test_client()
+        with client.session_transaction() as sess:
+            sess["logged_in"] = True
+        payload = {"alerts": [{"key": "visit:1:t", "kind": "visit", "at": 1, "title": "x", "detail": "y", "tripId": "t", "day": "2026-10-29"}], "now": 2, "tz": 10800}
+        with patch.dict(os.environ, {"SUPABASE_URL": "https://x.supabase.co", "SUPABASE_SECRET_KEY": "sb_secret_x"}), \
+             patch("services.logistics.service.alerts", return_value=payload):
+            r = client.get("/api/logistics/alerts")
+        self.assertEqual(r.get_json()["alerts"][0]["kind"], "visit")
+
+
 class AssetNameTests(unittest.TestCase):
     def test_catalog_has_full_wialon_names_and_still_matches_plates(self):
         from services import assets

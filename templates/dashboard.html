@@ -20,6 +20,20 @@
       </div>
     </div>
     <div class="topbar-actions">
+      <div class="alerts-wrap">
+        <button type="button" class="bell" id="alerts-bell" aria-label="Notifications" aria-expanded="false">🔔<span class="bell-count hidden" id="alerts-count">0</span></button>
+        <div class="alerts-panel hidden" id="alerts-panel" role="dialog" aria-label="Notifications">
+          <div class="alerts-head">
+            <b>Notifications</b>
+            <span class="spacer"></span>
+            <button type="button" class="link-btn hidden" id="alerts-enable">Enable pop-ups</button>
+            <button type="button" class="link-btn" id="alerts-read">Mark all read</button>
+          </div>
+          <div class="alerts-filters" id="alerts-filters"></div>
+          <ul class="alerts-list" id="alerts-list"><li class="alerts-empty">Loading…</li></ul>
+          <p class="alerts-foot" id="alerts-foot"></p>
+        </div>
+      </div>
       <span class="clock"><span id="clock-time">EAT --:--:--</span> <span class="live-dot">Live</span></span>
       <a href="{{ url_for('logout') }}" class="btn-ghost">Sign Out</a>
     </div>
@@ -191,6 +205,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
   <script src="{{ url_for('static', filename='js/reports.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/alerts.js') }}"></script>
   <script src="{{ url_for('static', filename='js/trips.js') }}"></script>
 </body>
 </html>

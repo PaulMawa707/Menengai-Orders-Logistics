@@ -366,6 +366,17 @@ def api_trips():
         return _trips_error(exc)
 
 
+@app.route("/api/logistics/alerts")
+@login_required
+def api_alerts():
+    if not trip_store.configured():
+        return jsonify({"error": 0, "alerts": [], "now": int(time.time()), "tz": logistics.TZ_S})
+    try:
+        return jsonify({"error": 0, **logistics.alerts(config.WIALON_TOKEN, config.WIALON_RESOURCE_ID)})
+    except Exception as exc:
+        return _trips_error(exc)
+
+
 @app.route("/api/logistics/trips/<trip_id>", methods=["GET", "DELETE"])
 @login_required
 def api_trip(trip_id):

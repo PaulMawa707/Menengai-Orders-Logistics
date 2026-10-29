@@ -173,18 +173,41 @@ def _same_path(have, row) -> bool:
     return len(a) == len(b) and a[:1] == b[:1] and a[-1:] == b[-1:]
 
 
+STATUS_KEYS = ("ws", "wat", "wleft")
+
+
+def _status_of(plan):
+    return [tuple(s.get(k) for k in STATUS_KEYS) for s in plan.get("stops", [])], plan.get("wStart"), plan.get("wReturn")
+
+
+def with_status(old_plan, new_plan):
+    """`old_plan` with Wialon's fulfilment (order status, arrival, departure) taken from `new_plan`.
+
+    Stops are matched in order when both have the same number of stops, otherwise by name.
+    """
+    new_stops = new_plan.get("stops", [])
+    old_stops = old_plan.get("stops", [])
+    if len(new_stops) == len(old_stops):
+        source = new_stops
+    else:
+        by_name = {s["name"].strip().lower(): s for s in new_stops}
+        source = [by_name.get(s["name"].strip().lower(), {}) for s in old_stops]
+    stops = [{**{k: v for k, v in o.items() if k not in STATUS_KEYS}, **{k: n[k] for k in STATUS_KEYS if k in n}} for o, n in zip(old_stops, source)]
+    return {**old_plan, "stops": stops, "wStart": new_plan.get("wStart"), "wReturn": new_plan.get("wReturn")}
+
+
 def refresh_unfinished(rows):
-    """Brings trips read from Wialon up to date while they have no final result (running routes can still be edited
-    there); finished ones only get the planned road path. Uploads keep the plan made by this app."""
+    """Brings trips up to date with Wialon Logistics. Routes read from Wialon follow it fully while they have no final
+    result (running routes can still be edited there); afterwards only the planned road and Wialon's fulfilment.
+    Uploads keep the plan made by this app and only take Wialon's fulfilment."""
     for i in range(0, len(rows), 50):
         part = {r["source_key"]: r for r in rows[i : i + 50]}
         keys = ",".join(f'"{k}"' for k in part)
         have = _request(
             "GET",
             params=[
-                ("select", "id,source_key,unit_id,unit_name,route_name,window_from,window_to,plan,result_at"),
+                ("select", "id,source_key,source,unit_id,unit_name,route_name,window_from,window_to,plan,result_at"),
                 ("source_key", f"in.({keys})"),
-                ("source", "eq.wialon"),
                 ("removed_at", "is.null"),
             ],
             what="Loading trips from Wialon",
@@ -194,15 +217,20 @@ def refresh_unfinished(rows):
             if not row:
                 continue
             old = h.get("plan") or {}
-            if row["plan"].get("routing") == "wialon" and old.get("routing") in ROAD_ROUTINGS:
-                # Wialon gave no road path; keep the one already worked out for this trip.
-                row = {**row, "plan": {**row["plan"], "geometry": old.get("geometry"), "routing": old["routing"]}}
-            if not h.get("result_at") and not _same_trip(h, row):
-                patch = {k: row[k] for k in ("unit_id", "unit_name", "route_name", "warehouse", "day", "window_from", "window_to", "plan")}
-            elif not _same_path(h, row):
-                patch = {"plan": {**h["plan"], "geometry": row["plan"]["geometry"], "routing": row["plan"]["routing"]}}
+            if h.get("source") == "upload":
+                if _status_of(old) == _status_of(with_status(old, row["plan"])):
+                    continue
+                patch = {"plan": with_status(old, row["plan"])}
             else:
-                continue
+                if row["plan"].get("routing") == "wialon" and old.get("routing") in ROAD_ROUTINGS:
+                    # Wialon gave no road path; keep the one already worked out for this trip.
+                    row = {**row, "plan": {**row["plan"], "geometry": old.get("geometry"), "routing": old["routing"]}}
+                if not h.get("result_at") and not (_same_trip(h, row) and _status_of(old) == _status_of(row["plan"])):
+                    patch = {k: row[k] for k in ("unit_id", "unit_name", "route_name", "warehouse", "day", "window_from", "window_to", "plan")}
+                elif not _same_path(h, row) or _status_of(old) != _status_of(with_status(old, row["plan"])):
+                    patch = {"plan": {**with_status(old, row["plan"]), "geometry": row["plan"]["geometry"], "routing": row["plan"]["routing"]}}
+                else:
+                    continue
             _request(
                 "PATCH",
                 params={"id": f"eq.{h['id']}"},

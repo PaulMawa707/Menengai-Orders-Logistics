@@ -23,6 +23,9 @@ FRESH_S = 300
 # Wialon order flags: 0x100 marks a warehouse (start 260, end 264).
 WAREHOUSE_FLAG = 0x100
 WORKERS = 4
+# Wialon order statuses: 2 completed in time, 3 completed overdue.
+WIALON_DONE = {2: "on_time", 3: "late"}
+VISITED = {"on_time", "early", "late"}
 # Wialon refuses more than about 10 concurrent requests per user.
 REPORT_WORKERS = 6
 
@@ -83,17 +86,23 @@ def _wialon_plan(orders):
     stops = []
     km = drive = service = 0.0
     return_at = 0
+    left_depot = back_at_depot = None
     for o in pts:
         p = o.get("p") or {}
         r = p.get("r") or {}
         eta = int(r.get("vt") or o.get("tf") or 0)
         km += _num(r.get("m"))
         drive += _num(r.get("t"))
+        done = int(o.get("s") or 0) in WIALON_DONE
         if int(o.get("f") or 0) & WAREHOUSE_FLAG:
             if depot is None:
                 depot = {"name": o.get("n") or "Warehouse", "lat": float(o["y"]), "lon": float(o["x"])}
+                if done:
+                    left_depot = int(o.get("dtt") or o.get("stt") or 0) or None
             else:
                 return_at = max(return_at, eta)
+                if done:
+                    back_at_depot = int(o.get("stt") or 0) or None
             continue
         svc = _num(p.get("ut"))
         service += svc
@@ -110,6 +119,7 @@ def _wialon_plan(orders):
                 "legKm": round(_num(r.get("m")) / 10) / 100,
                 "eta": eta,
                 "etd": eta + int(svc),
+                **wialon_status(o),
             }
         )
     if not stops:
@@ -146,6 +156,51 @@ def _wialon_plan(orders):
         "geometry": geometry,
         "overrun": return_at > end,
         "rules": dict(RULES),
+        "wStart": left_depot,
+        "wReturn": back_at_depot,
+    }
+
+
+def wialon_status(order):
+    """Wialon Logistics' own fulfilment of an order: status, arrival and departure."""
+    s = int(order.get("s") or 0)
+    if s not in WIALON_DONE:
+        return {"ws": s}
+    return {"ws": s, "wat": int(order.get("stt") or 0) or None, "wleft": int(order.get("dtt") or 0) or None}
+
+
+def with_wialon(plan, tracking, now):
+    """Planned-vs-actual with Wialon Logistics' fulfilment added: an order Wialon marks completed counts as visited
+    even when the positions did not show it (Wialon uses each order's own radius)."""
+    stops = plan.get("stops") or []
+    if not any(s.get("ws") in WIALON_DONE for s in stops) and not plan.get("wStart") and not plan.get("wReturn"):
+        return tracking
+    if tracking is None:
+        missed = now > plan["end"]
+        tracking = {
+            "at": now,
+            "visits": [
+                {"seq": s["seq"], "status": "missed" if missed else "pending", "arrivedAt": None, "leftAt": None, "closestM": None, "outOfOrder": False}
+                for s in stops
+            ],
+            "startedAt": None,
+            "returnedAt": None,
+            "km": 0,
+            "lastPos": None,
+            "path": [],
+        }
+    by_seq = {s["seq"]: s for s in stops}
+    visits = []
+    for v in tracking["visits"]:
+        s = by_seq.get(v["seq"], {})
+        if v["status"] not in VISITED and s.get("ws") in WIALON_DONE:
+            v = {**v, "status": WIALON_DONE[s["ws"]], "arrivedAt": s.get("wat"), "leftAt": s.get("wleft"), "wialon": True}
+        visits.append(v)
+    return {
+        **tracking,
+        "visits": visits,
+        "startedAt": tracking.get("startedAt") or plan.get("wStart"),
+        "returnedAt": tracking.get("returnedAt") or plan.get("wReturn"),
     }
 
 
@@ -317,7 +372,7 @@ def list_page(token, resource_id, day_from, day_to, q="", state=None, page=1, pa
     q = (q or "").strip().lower()
     if q:
         rows = [r for r in rows if q in r["route_name"].lower() or q in r["unit_name"].lower()]
-    rough = [to_summary(r, r.get("result"), now) for r in rows]
+    rough = [to_summary(r, with_wialon(r["plan"], r.get("result"), now), now) for r in rows]
     counts = {k: 0 for k in TRIP_STATES}
     for s in rough:
         counts[s["state"]] += 1
@@ -332,9 +387,9 @@ def list_page(token, resource_id, day_from, day_to, q="", state=None, page=1, pa
     def summarise(i):
         row = rows[i]
         if row.get("result"):
-            return to_summary(row, row["result"], now)
+            return to_summary(row, with_wialon(row["plan"], row["result"], now), now)
         try:
-            return to_summary(row, tracking_for(token, row, now), now)
+            return to_summary(row, with_wialon(row["plan"], tracking_for(token, row, now), now), now)
         except Exception as exc:
             print(f"[logistics] tracking failed: {exc}")
             return rough[i]
@@ -370,7 +425,7 @@ def trip_detail(token, resource_id, trip_id):
     now = int(time.time())
     row = store.get_trip(resource_id, trip_id)
     row["plan"] = road_plan(row)
-    tracking = tracking_for(token, row, now)
+    tracking = with_wialon(row["plan"], tracking_for(token, row, now), now)
     return {**to_summary(row, tracking, now), "plan": row["plan"], "tracking": tracking, "now": now, "tz": TZ_S}
 
 
@@ -415,7 +470,87 @@ def report_trips(token, resource_id, day_from, day_to, unit_id=None, failed=None
 
     with ThreadPoolExecutor(max_workers=REPORT_WORKERS) as pool:
         list(pool.map(run, groups.values()))
-    return [(r, tracking[i], to_summary(r, tracking[i], now)) for i, r in enumerate(rows)]
+    merged = [with_wialon(r["plan"], tracking[i], now) for i, r in enumerate(rows)]
+    return [(r, merged[i], to_summary(r, merged[i], now)) for i, r in enumerate(rows)]
+
+
+# ---- Alerts ----
+
+# A trip that has not left the warehouse this long after its planned start is reported.
+NOT_STARTED_S = 30 * 60
+ALERT_WINDOW_S = 24 * 3600
+ALERTS_FRESH_S = 60
+_alerts_cache = {}
+_alerts_lock = threading.Lock()
+
+
+def _hhmm(t):
+    return datetime.fromtimestamp(int(t), tz=EAT).strftime("%H:%M")
+
+
+def trip_alerts(row, tracking, s, now):
+    """Events of one trip: stops visited (in time or late) or missed, trip completed, ended with missed stops, not started."""
+    out = []
+    plan = row["plan"]
+    stops = {st["seq"]: st for st in plan["stops"]}
+    unit, route, trip_id = s["unitName"], s["routeName"], row["id"]
+
+    def add(key, kind, at, title, detail):
+        out.append({"key": f"{key}:{trip_id}", "kind": kind, "at": int(at), "title": title, "detail": detail, "tripId": trip_id, "day": s["day"]})
+
+    visits = (tracking or {}).get("visits", [])
+    for v in visits:
+        st = stops.get(v["seq"])
+        if not st:
+            continue
+        where = f"{route} · stop {v['seq']} of {len(stops)}"
+        if v["status"] in VISITED and v.get("arrivedAt"):
+            dev = round((v["arrivedAt"] - st["eta"]) / 60)
+            by = " · fulfilled in Wialon" if v.get("wialon") else ""
+            if v["status"] == "late":
+                add(f"visit:{v['seq']}", "late", v["arrivedAt"], f"{unit} reached {st['name']} late", f"{where} · arrived {_hhmm(v['arrivedAt'])}, {dev} min after the ETA{by}")
+            else:
+                add(f"visit:{v['seq']}", "visit", v["arrivedAt"], f"{unit} visited {st['name']}", f"{where} · arrived {_hhmm(v['arrivedAt'])}{by}")
+        elif v["status"] == "missed":
+            add(f"missed:{v['seq']}", "missed", plan["end"], f"{unit} missed {st['name']}", f"{where} · not visited by the end of the window ({_hhmm(plan['end'])})")
+
+    p = s["progress"] or {}
+    done = p.get("onTime", 0) + p.get("early", 0) + p.get("late", 0)
+    if s["state"] == "completed":
+        last = max([v.get("leftAt") or v.get("arrivedAt") or 0 for v in visits] + [0])
+        at = (tracking or {}).get("returnedAt") or last or now
+        add("completed", "completed", at, f"{unit} completed {route}", f"All {len(stops)} stops visited · {p.get('late', 0)} late")
+    elif s["state"] == "ended":
+        add("ended", "ended", max(s["windowTo"], s["returnAt"]), f"{unit} ended with missed stops", f"{route} · {done} of {len(stops)} visited · {p.get('missed', 0)} missed")
+    elif (
+        s["state"] == "in_progress"
+        and not (tracking or {}).get("startedAt")
+        and not done
+        and now > plan["start"] + NOT_STARTED_S
+    ):
+        add("not_started", "not_started", plan["start"] + NOT_STARTED_S, f"{unit} has not left {plan['depot']['name'] if plan.get('depot') else 'the warehouse'}", f"{route} · planned start {_hhmm(plan['start'])}")
+    return out
+
+
+def alerts(token, resource_id):
+    """Trip events of the last day, newest first (positions and Wialon fulfilment, read-only on Wialon)."""
+    now = int(time.time())
+    with _alerts_lock:
+        hit = _alerts_cache.get(int(resource_id))
+        if hit and hit[0] > time.time() - ALERTS_FRESH_S:
+            return hit[1]
+    today = local_day(now)
+    yesterday = local_day(now - 86400)
+    events = []
+    for row, tracking, s in report_trips(token, resource_id, yesterday, today):
+        if s["state"] == "scheduled":
+            continue
+        events.extend(e for e in trip_alerts(row, tracking, s, now) if now - ALERT_WINDOW_S <= e["at"] <= now)
+    events.sort(key=lambda e: e["at"], reverse=True)
+    out = {"alerts": events[:300], "now": now, "tz": TZ_S}
+    with _alerts_lock:
+        _alerts_cache[int(resource_id)] = (time.time(), out)
+    return out
 
 
 def to_report_trip(row, tracking, summary):
