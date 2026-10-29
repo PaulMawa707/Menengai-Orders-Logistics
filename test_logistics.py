@@ -292,7 +292,8 @@ class ListTests(unittest.TestCase):
         self.assertEqual(out["counts"]["ended"], 2)
         self.assertEqual({r["state"] for r in out["rows"]}, {"ended"})
         self.assertTrue(all(r["progress"]["missed"] == 3 for r in out["rows"]))
-        self.assertEqual(unit_track.call_count, 2)
+        # Both trips are the same vehicle on the same day: its positions are read once.
+        self.assertEqual(unit_track.call_count, 1)
         self.assertEqual(sum(out["counts"].values()), 2)
         # Finished and settled: results are kept so the list need not reload positions.
         self.assertEqual(save_result.call_count, 2)

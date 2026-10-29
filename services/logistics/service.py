@@ -22,7 +22,6 @@ AFTER_S = 30 * 86400
 FRESH_S = 300
 # Wialon order flags: 0x100 marks a warehouse (start 260, end 264).
 WAREHOUSE_FLAG = 0x100
-WORKERS = 4
 # Wialon order statuses: 2 completed in time, 3 completed overdue.
 WIALON_DONE = {2: "on_time", 3: "late"}
 VISITED = {"on_time", "early", "late"}
@@ -376,42 +375,25 @@ SORTS = {
 
 
 def list_page(token, resource_id, day_from, day_to, q="", state=None, page=1, page_size=15, sort=None):
-    """Trips of a period; states are first estimated from the clock, then measured for the visible page."""
+    """Trips of a period, every one measured from positions and Wialon's fulfilment, so counts and filters are exact."""
     now = int(time.time())
     sync_wialon_history(token, resource_id, day_from, day_to, now)
     rows = current_rules(store.list_trips(resource_id, day_from, day_to, with_results=True))
     q = (q or "").strip().lower()
     if q:
         rows = [r for r in rows if q in r["route_name"].lower() or q in r["unit_name"].lower()]
-    rough = [to_summary(r, with_wialon(r["plan"], r.get("result"), now), now) for r in rows]
+    summaries = [to_summary(r, t, now) for r, t in zip(rows, track_all(token, rows, now))]
     counts = {k: 0 for k in TRIP_STATES}
-    for s in rough:
+    for s in summaries:
         counts[s["state"]] += 1
-    idx = [i for i, s in enumerate(rough) if not state or s["state"] == state]
-    idx.sort(key=lambda i: (rough[i]["day"], TRIP_STATES.index(rough[i]["state"]), rough[i]["windowFrom"], rough[i]["routeName"]))
+    idx = [i for i, s in enumerate(summaries) if not state or s["state"] == state]
+    idx.sort(key=lambda i: (summaries[i]["day"], TRIP_STATES.index(summaries[i]["state"]), summaries[i]["windowFrom"], summaries[i]["routeName"]))
     if sort:
         col, _, direction = sort.partition(":")
         if col in SORTS:
-            idx.sort(key=lambda i: SORTS[col](rough[i]), reverse=direction == "desc")
-    page_idx = idx[(page - 1) * page_size : page * page_size]
-
-    def summarise(i):
-        row = rows[i]
-        if row.get("result"):
-            return to_summary(row, with_wialon(row["plan"], row["result"], now), now)
-        try:
-            return to_summary(row, with_wialon(row["plan"], tracking_for(token, row, now), now), now)
-        except Exception as exc:
-            print(f"[logistics] tracking failed: {exc}")
-            return rough[i]
-
-    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
-        summaries = list(pool.map(summarise, page_idx))
-    # The visible trips were measured; count them as measured.
-    for i, s in zip(page_idx, summaries):
-        counts[rough[i]["state"]] -= 1
-        counts[s["state"]] += 1
-    return {"rows": summaries, "total": len(idx), "page": page, "pageSize": page_size, "counts": counts, "now": now, "tz": TZ_S}
+            idx.sort(key=lambda i: SORTS[col](summaries[i]), reverse=direction == "desc")
+    page_rows = [summaries[i] for i in idx[(page - 1) * page_size : page * page_size]]
+    return {"rows": page_rows, "total": len(idx), "page": page, "pageSize": page_size, "counts": counts, "now": now, "tz": TZ_S}
 
 
 def road_plan(row):
@@ -454,6 +436,12 @@ def report_trips(token, resource_id, day_from, day_to, unit_id=None, failed=None
     rows = current_rules(store.list_trips(resource_id, day_from, day_to, with_results=True))
     if unit_id:
         rows = [r for r in rows if int(r["unit_id"]) == int(unit_id)]
+    merged = track_all(token, rows, now, failed)
+    return [(r, merged[i], to_summary(r, merged[i], now)) for i, r in enumerate(rows)]
+
+
+def track_all(token, rows, now, failed=None):
+    """Planned-vs-actual (with Wialon's fulfilment) of every trip; each vehicle's positions are read once per day."""
     tracking = [r.get("result") for r in rows]
     groups = {}
     for i, r in enumerate(rows):
@@ -485,8 +473,7 @@ def report_trips(token, resource_id, day_from, day_to, unit_id=None, failed=None
 
     with ThreadPoolExecutor(max_workers=REPORT_WORKERS) as pool:
         list(pool.map(run, groups.values()))
-    merged = [with_wialon(r["plan"], tracking[i], now) for i, r in enumerate(rows)]
-    return [(r, merged[i], to_summary(r, merged[i], now)) for i, r in enumerate(rows)]
+    return [with_wialon(r["plan"], tracking[i], now) for i, r in enumerate(rows)]
 
 
 # ---- Alerts ----
