@@ -2,7 +2,10 @@ import os
 
 import requests
 
-from .geo import dist_m
+from .geo import dist_m, thin
+
+# Planned road path points kept per trip (enough for the map, small enough for list queries).
+MAX_GEOMETRY = 1200
 
 OSRM_URL = os.getenv("OSRM_URL", "https://router.project-osrm.org").rstrip("/")
 FALLBACK_SPEED_KMH = 30
@@ -23,7 +26,7 @@ RULES = {
 
 def _osrm_part(pts):
     coords = ";".join(f"{p['lon']:.6f},{p['lat']:.6f}" for p in pts)
-    url = f"{OSRM_URL}/route/v1/driving/{coords}?overview=simplified&geometries=geojson&steps=false"
+    url = f"{OSRM_URL}/route/v1/driving/{coords}?overview=full&geometries=geojson&steps=false"
     res = requests.get(url, timeout=15, headers={"user-agent": "Menengai-Orders-Logistics"})
     res.raise_for_status()
     js = res.json()
@@ -118,7 +121,7 @@ def build_plan(stops, depot, start: int, end: int, use_road=True) -> dict:
         "serviceMin": round(service / 60),
         "stops": out,
         "routing": routing,
-        "geometry": geometry or [[p["lat"], p["lon"]] for p in pts],
+        "geometry": thin([[round(y, 5), round(x, 5)] for y, x in geometry], MAX_GEOMETRY) if geometry else [[p["lat"], p["lon"]] for p in pts],
         "overrun": t > end,
         "rules": dict(RULES),
     }

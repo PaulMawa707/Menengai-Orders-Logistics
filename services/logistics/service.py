@@ -8,7 +8,7 @@ from services import assets
 
 from . import store, wialon
 from .geo import decode_polyline, thin
-from .plan import RULES, road_legs, build_plan
+from .plan import MAX_GEOMETRY, RULES, build_plan, road_legs
 from .track import LEAD_S, TAIL_S, TRIP_STATES, progress_of, track_plan, trip_state
 
 TZ_S = 3 * 3600
@@ -23,8 +23,6 @@ FRESH_S = 300
 # Wialon order flags: 0x100 marks a warehouse (start 260, end 264).
 WAREHOUSE_FLAG = 0x100
 WORKERS = 4
-# Planned road path points kept per trip (enough for the map, small enough for list queries).
-MAX_GEOMETRY = 1200
 # Wialon refuses more than about 10 concurrent requests per user.
 REPORT_WORKERS = 6
 
